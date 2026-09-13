@@ -26,20 +26,20 @@
       </div>
 
       <div class="editor-tabs" role="tablist" aria-label="편집 도구 탭">
-        <button class="editor-tab active" id="editTabButton" type="button" role="tab" aria-selected="true" aria-controls="editTab">편집</button>
-        <button class="editor-tab" id="layersTabButton" type="button" role="tab" aria-selected="false" aria-controls="layersTab">항목 관리 <span id="layerCount">0</span></button>
+        <button class="editor-tab active" id="editTabButton" type="button" role="tab" aria-selected="true" aria-controls="editTab" title="이미지와 문자 추가"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="4"/><path d="M12 8v8M8 12h8"/></svg><span>추가</span></button>
+        <button class="editor-tab" id="layersTabButton" type="button" role="tab" aria-selected="false" aria-controls="layersTab" title="선택한 이미지와 문구 편집"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M4 7h16M4 17h16"/><rect x="7" y="4" width="4" height="6" rx="1" fill="white"/><rect x="14" y="14" width="4" height="6" rx="1" fill="white"/></svg><span>편집</span></button>
       </div>
 
       <div class="tab-content active" id="editTab" role="tabpanel" aria-labelledby="editTabButton">
       <section class="control-section first-section">
         <div class="section-title">
-          <span class="step">01</span>
-          <h2>이미지</h2>
+
+
         </div>
         <label class="upload-zone" id="uploadZone" for="imageInput">
           <input id="imageInput" type="file" multiple accept="image/png,image/jpeg,.png,.jpg,.jpeg">
           <span class="upload-icon" aria-hidden="true">＋</span>
-          <strong>이미지 추가하기</strong>
+          <strong>이미지 추가</strong>
           <small>PNG, JPEG · 여러 장 추가 가능 · 최대 15MB</small>
           <small>EXIF·위치 정보 자동 제거</small>
         </label>
@@ -48,15 +48,30 @@
 
       <section class="control-section">
         <div class="section-title text-section-title">
-          <div><span class="step coral">02</span><h2>문구</h2></div>
+
         </div>
         <button class="text-tool-button" id="textToolButton" type="button" aria-pressed="false">
           <span aria-hidden="true">A</span>
-          <strong>텍스트 도구</strong>
-          <small>선택 후 카드 위를 클릭하세요</small>
+          <strong>문자 추가</strong>
+          <small>카드 위에 직접 입력</small>
         </button>
+
+      </section>
+      <p class="add-help">추가한 요소는 선택 항목 편집에서 관리할 수 있어요.</p>
+      </div>
+
+      <div class="tab-content" id="layersTab" role="tabpanel" aria-labelledby="layersTabButton" hidden>
+        <section class="control-section first-section">
+          <div class="section-title">
+            <span id="layerCount" class="item-count">0</span>
+            <div><h2>캔버스 항목</h2><p class="section-help">이미지와 문구를 선택해 개별 편집할 수 있어요.</p></div>
+          </div>
+          <div class="layer-list" id="layerList"></div>
+        </section>
+
         <fieldset class="text-controls" id="textControls">
           <legend class="sr-only">선택한 문구 편집</legend>
+          <div class="selected-layer-heading"><strong>문구 설정</strong><button class="icon-action danger" id="deleteTextButton" type="button">삭제</button></div>
         <div class="two-col compact">
           <label class="field">글자 크기
             <div class="unit-input"><input id="fontSize" type="number" min="16" max="180" value="68"><span>px</span></div>
@@ -76,18 +91,7 @@
         </div>
         <p class="text-box-help">캔버스에서 문구를 선택한 뒤 테두리 핸들을 드래그해 상하좌우 또는 대각선으로 크기를 조절하세요.</p>
         </fieldset>
-      </section>
-      </div>
-
-      <div class="tab-content" id="layersTab" role="tabpanel" aria-labelledby="layersTabButton" hidden>
-        <section class="control-section first-section">
-          <div class="section-title">
-            <span class="step ink">LAY</span>
-            <div><h2>캔버스 항목</h2><p class="section-help">이미지와 문구를 선택해 개별 편집할 수 있어요.</p></div>
-          </div>
-          <div class="layer-list" id="layerList"></div>
-        </section>
-
+        <p class="inspector-empty" id="inspectorEmpty">선택한 항목이 없습니다.<br>카드 또는 목록에서 요소를 선택하세요.</p>
         <fieldset class="layer-controls" id="layerControls" disabled>
           <legend class="sr-only">선택한 이미지 조정</legend>
           <div class="selected-layer-heading">
@@ -185,8 +189,8 @@
       <div class="template-list" id="templateList"></div>
 
       <section class="json-tools">
-        <div class="section-title mini"><span class="step ink">JSON</span><h3>백업 및 복원</h3></div>
-        <p>템플릿을 한 파일로 내보내거나 복원할 수 있어요.</p>
+        <div class="section-title mini"><h3>백업 및 복원</h3></div>
+        <p>템플릿 전체를 JSON 파일로 백업합니다.</p>
         <div class="json-actions">
           <button class="button ghost full" id="exportJsonButton" type="button">JSON 내보내기</button>
           <label class="button outline full" for="jsonInput">JSON 가져오기<input id="jsonInput" type="file" accept="application/json,.json"></label>

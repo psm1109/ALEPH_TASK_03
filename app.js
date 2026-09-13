@@ -260,9 +260,6 @@
     activeTab = tab;
     const isEdit = tab === 'edit';
     if (!isEdit) textToolActive = false;
-    if (isEdit && !selectedTextId && state.texts.length) selectedTextId = state.texts.at(-1).id;
-    if (!isEdit && !selectedLayerId && state.images.length) selectedLayerId = state.images.at(-1).id;
-    selectedElement = isEdit && selectedText() ? 'text' : (!isEdit && selectedLayer() ? 'image' : null);
     $('#editTab').hidden = !isEdit;
     $('#layersTab').hidden = isEdit;
     $('#editTabButton').classList.toggle('active', isEdit);
@@ -516,7 +513,7 @@
     });
   }
 
-  function finishInlineTextEditing() {
+  function finishInlineTextEditing(event) {
     if (!editingTextId) return;
     const id = editingTextId;
     editingTextId = null;
@@ -527,7 +524,7 @@
       selectedTextId = id;
       deleteSelectedText(false);
     }
-    selectedElement = null;
+    selectedElement = text?.text && event?.relatedTarget?.closest('.controls-panel') ? 'text' : null;
     syncControls(); renderLayers(); renderCanvas();
   }
 
@@ -553,6 +550,11 @@
   }
 
   function renderCanvas(showGuides = true) {
+    const hasText = selectedElement === 'text' && Boolean(selectedText());
+    const hasImage = selectedElement === 'image' && Boolean(selectedLayer());
+    $('#textControls').hidden = !hasText;
+    $('#layerControls').hidden = !hasImage;
+    $('#inspectorEmpty').hidden = hasText || hasImage;
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     drawBackground();
     state.images.forEach(drawLayer);
@@ -673,6 +675,7 @@
       recordHistory(beforeAdd);
       state.images.push(...additions);
       selectedLayerId = additions.at(-1).id;
+      selectedElement = 'image';
       renderLayers(); syncLayerControls(); renderCanvas(); switchTab('layers');
     }
     if (additions.length && !rejected.length) setMessage(message, `${additions.length}개 이미지의 메타데이터를 제거하고 추가했습니다.`, 'success');
@@ -729,7 +732,7 @@
   function selectText(id) {
     if (!state.texts.some(layer => layer.id === id)) return;
     selectedTextId = id; selectedElement = 'text';
-    switchTab('edit'); syncControls(); renderLayers(); renderCanvas();
+    switchTab('layers'); syncControls(); renderLayers(); renderCanvas();
   }
 
   function moveText(id, direction) {
@@ -834,6 +837,7 @@
       state.images.push(layer);
       imageCache.set(id, image);
       selectedLayerId = id;
+      selectedElement = 'image';
       switchTab('layers');
       renderLayers(); renderCanvas();
       showToast('이미지를 붙여넣었습니다.');
@@ -841,7 +845,7 @@
       const source = elementClipboard.layer;
       const layer = { ...source, id: makeId(), name: `${source.name} 복사본`, x: Math.min(95, source.x + 3), y: Math.min(95, source.y + 3) };
       state.texts.push(layer); selectedTextId = layer.id; selectedElement = 'text';
-      switchTab('edit');
+      switchTab('layers');
       syncControls(); renderLayers(); renderCanvas();
       showToast('문구를 붙여넣었습니다.');
     }
@@ -859,6 +863,9 @@
   }
 
   function setMessage(element, text, type = '') {
+    if (element.id === 'templateMessage' && type === 'success') {
+      element.textContent = ''; element.className = 'status-message'; showToast(text); return;
+    }
     element.textContent = text; element.className = `status-message ${type}`;
   }
 
@@ -889,8 +896,7 @@
     }
     list.innerHTML = templates.map(item => `<article class="template-item" data-id="${escapeHtml(item.id)}">
       <div><strong>${escapeHtml(item.name)}</strong><small>${item.ratio} · 이미지 ${item.images.length}개 · 문구 ${item.texts.length}개</small></div>
-      <span class="step ${item.images.length ? 'coral' : ''}">${item.images.length ? 'IMG' : 'TXT'}</span>
-      <div class="template-actions"><button type="button" data-action="load">불러오기</button><button type="button" data-action="update">현재 내용으로 수정</button><button type="button" class="delete" data-action="delete" aria-label="${escapeHtml(item.name)} 삭제">×</button></div>
+      <div class="template-actions"><button type="button" data-action="load">불러오기</button><button type="button" data-action="update" title="현재 작업으로 템플릿 업데이트">업데이트</button><button type="button" class="delete" data-action="delete" aria-label="${escapeHtml(item.name)} 삭제"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M3 6h18M9 6V3h6v3M6 6l1 15h10l1-15M10 10v7M14 10v7"/></svg></button></div>
     </article>`).join('');
   }
 
@@ -1266,6 +1272,7 @@
     $('#flipHorizontalButton').addEventListener('click', () => { const layer = selectedLayer(); if (layer) updateSelectedLayer('flipX', !layer.flipX); });
     $('#flipVerticalButton').addEventListener('click', () => { const layer = selectedLayer(); if (layer) updateSelectedLayer('flipY', !layer.flipY); });
     $('#deleteLayerButton').addEventListener('click', deleteSelectedLayer);
+    $('#deleteTextButton').addEventListener('click', () => deleteSelectedText());
     $('#downloadPngButton').addEventListener('click', () => downloadImage('image/png'));
     $('#downloadJpegButton').addEventListener('click', () => downloadImage('image/jpeg'));
     $('#resetButton').addEventListener('click', resetWork);
@@ -1286,7 +1293,7 @@
     canvas.addEventListener('pointercancel', endCanvasDrag);
     document.addEventListener('keydown', handleEditorShortcut);
     document.addEventListener('pointerdown', event => {
-      if (event.target === canvas || event.target.closest?.('#canvasTextEditorBox') || !selectedElement) return;
+      if (event.target === canvas || event.target.closest?.('#canvasTextEditorBox, .controls-panel') || !selectedElement) return;
       selectedElement = null; setResizeCursor(); renderCanvas();
     });
     window.addEventListener('resize', syncCanvasTextEditor);
