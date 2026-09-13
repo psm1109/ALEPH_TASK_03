@@ -42,7 +42,7 @@
   let textToolActive = false;
   let inlineEditHistorySaved = false;
   let inlineResizeState = null;
-  let activeTab = 'edit';
+  let activeTab = 'image';
   let dragState = null;
   let toastTimer;
   let imageCache = new Map();
@@ -296,15 +296,17 @@
 
   function switchTab(tab) {
     activeTab = tab;
-    const isEdit = tab === 'edit';
-    if (!isEdit) textToolActive = false;
-    $('#editTab').hidden = !isEdit;
-    $('#layersTab').hidden = isEdit;
-    $('#editTabButton').classList.toggle('active', isEdit);
-    $('#layersTabButton').classList.toggle('active', !isEdit);
-    $('#editTabButton').setAttribute('aria-selected', String(isEdit));
-    $('#layersTabButton').setAttribute('aria-selected', String(!isEdit));
-    $('#dragTip').textContent = isEdit ? '문구 이동 · 사각형 핸들로 너비 조절' : (state.images.length ? '선택한 이미지를 드래그해 옮겨보세요' : '먼저 이미지를 추가해주세요');
+    const isImage = tab === 'image';
+    if (isImage) textToolActive = false;
+    $('#imageTab').hidden = !isImage;
+    $('#textTab').hidden = isImage;
+    $('#imageTabButton').classList.toggle('active', isImage);
+    $('#textTabButton').classList.toggle('active', !isImage);
+    $('#imageTabButton').setAttribute('aria-selected', String(isImage));
+    $('#textTabButton').setAttribute('aria-selected', String(!isImage));
+    $(isImage ? '#imageTab' : '#textTab').append($('#contentInspector'));
+    $('#contentListTitle').textContent = isImage ? '이미지 목록' : '텍스트 목록';
+    $('#textToolButton').setAttribute('aria-pressed', String(textToolActive));
     renderLayers();
     renderCanvas();
   }
@@ -588,8 +590,8 @@
   }
 
   function renderCanvas(showGuides = true) {
-    const hasText = selectedElement === 'text' && Boolean(selectedText());
-    const hasImage = selectedElement === 'image' && Boolean(selectedLayer());
+    const hasText = activeTab === 'text' && selectedElement === 'text' && Boolean(selectedText());
+    const hasImage = activeTab === 'image' && selectedElement === 'image' && Boolean(selectedLayer());
     $('#textControls').hidden = !hasText;
     $('#layerControls').hidden = !hasImage;
     $('#inspectorEmpty').hidden = hasText || hasImage;
@@ -713,7 +715,7 @@
       state.images.push(...additions);
       selectedLayerId = additions.at(-1).id;
       selectedElement = 'image';
-      renderLayers(); syncLayerControls(); renderCanvas(); switchTab('layers');
+      renderLayers(); syncLayerControls(); renderCanvas(); switchTab(selectedElement || activeTab);
     }
     if (additions.length && !rejected.length) setMessage(message, `${additions.length}개 이미지의 메타데이터를 제거하고 추가했습니다.`, 'success');
     else if (additions.length) setMessage(message, `${additions.length}개 추가, ${rejected.length}개 거부: ${rejected.join(' · ')}`, 'error');
@@ -730,13 +732,15 @@
 
   function renderLayers() {
     const list = $('#layerList');
-    $('#layerCount').textContent = state.images.length + state.texts.length;
-    if (!state.images.length && !state.texts.length) {
-      list.innerHTML = '<div class="layer-empty">추가된 항목이 없어요.<br>이미지나 문구를 추가해주세요.</div>';
-      selectedLayerId = null; selectedTextId = null; syncLayerControls(); return;
+    const allItems = orderedElements().reverse();
+    const items = allItems.filter(({ type }) => type === activeTab);
+    $('#layerCount').textContent = items.length;
+    if (!items.length) {
+      const label = activeTab === 'image' ? '이미지' : '텍스트';
+      list.innerHTML = `<div class="layer-empty">추가된 ${label}가 없어요.<br>위의 추가 버튼을 눌러주세요.</div>`;
+      syncLayerControls(); return;
     }
-    const items = orderedElements().reverse();
-    list.innerHTML = items.map(({ type, layer }, index) => {
+    list.innerHTML = items.map(({ type, layer }) => {
       const isText = type === 'text';
       const label = isText ? (layer.text.split('\n')[0].trim() || layer.name) : layer.name;
       const active = selectedElement === type && layer.id === (isText ? selectedTextId : selectedLayerId);
@@ -746,8 +750,8 @@
           <span class="layer-copy"><strong>${escapeHtml(label)}</strong><small>${isText ? '문구' : '이미지'} · 드래그로 순서 변경</small></span>
         </button>
         <span class="layer-order">
-          <button type="button" data-layer-action="up" aria-label="앞으로 가져오기" ${index === 0 ? 'disabled' : ''}>↑</button>
-          <button type="button" data-layer-action="down" aria-label="뒤로 보내기" ${index === items.length - 1 ? 'disabled' : ''}>↓</button>
+          <button type="button" data-layer-action="up" aria-label="앞으로 가져오기" ${allItems[0].layer.id === layer.id ? 'disabled' : ''}>↑</button>
+          <button type="button" data-layer-action="down" aria-label="뒤로 보내기" ${allItems[allItems.length - 1].layer.id === layer.id ? 'disabled' : ''}>↓</button>
         </span></article>`;
     }).join('');
     syncLayerControls();
@@ -756,7 +760,7 @@
   function selectText(id) {
     if (!state.texts.some(layer => layer.id === id)) return;
     selectedTextId = id; selectedElement = 'text';
-    switchTab('layers'); syncControls(); renderLayers(); renderCanvas();
+    switchTab(selectedElement || activeTab); syncControls(); renderLayers(); renderCanvas();
   }
 
   function moveText(id, direction) {
@@ -767,7 +771,7 @@
     if (!state.images.some(layer => layer.id === id)) return;
     selectedLayerId = id;
     selectedElement = 'image';
-    if (activeTab !== 'layers') switchTab('layers');
+    if (activeTab !== 'image') switchTab(selectedElement || activeTab);
     renderLayers(); renderCanvas();
   }
 
@@ -852,14 +856,14 @@
       imageCache.set(id, image);
       selectedLayerId = id;
       selectedElement = 'image';
-      switchTab('layers');
+      switchTab(selectedElement || activeTab);
       renderLayers(); renderCanvas();
       showToast('이미지를 붙여넣었습니다.');
     } else {
       const source = elementClipboard.layer;
       const layer = { ...source, id: makeId(), name: `${source.name} 복사본`, x: Math.min(95, source.x + 3), y: Math.min(95, source.y + 3) };
       state.texts.push(layer); selectedTextId = layer.id; selectedElement = 'text';
-      switchTab('layers');
+      switchTab(selectedElement || activeTab);
       syncControls(); renderLayers(); renderCanvas();
       showToast('문구를 붙여넣었습니다.');
     }
@@ -1001,7 +1005,7 @@
     state = { ...DEFAULT_STATE, images: [], texts: [{ ...DEFAULT_TEXT }] }; imageCache = new Map(); selectedLayerId = null; selectedTextId = DEFAULT_TEXT.id;
     selectedElement = null; editingTextId = null; textToolActive = false; inlineResizeState = null; $('#canvasTextEditorBox').hidden = true;
     $('#templateName').value = ''; setMessage($('#fileMessage'), ''); setMessage($('#templateMessage'), '');
-    syncControls(); renderLayers(); setCanvasRatio(); switchTab('edit'); selectedElement = null; renderCanvas(); showToast('새 작업을 시작합니다.');
+    syncControls(); renderLayers(); setCanvasRatio(); switchTab('image'); selectedElement = null; renderCanvas(); showToast('새 작업을 시작합니다.');
   }
 
   function pointerPosition(event) {
@@ -1251,8 +1255,8 @@
     ['dragenter', 'dragover'].forEach(name => upload.addEventListener(name, event => { event.preventDefault(); upload.classList.add('dragover'); }));
     ['dragleave', 'drop'].forEach(name => upload.addEventListener(name, event => { event.preventDefault(); upload.classList.remove('dragover'); }));
     upload.addEventListener('drop', event => handleImageFiles(event.dataTransfer.files));
-    $('#editTabButton').addEventListener('click', () => switchTab('edit'));
-    $('#layersTabButton').addEventListener('click', () => switchTab('layers'));
+    $('#imageTabButton').addEventListener('click', () => switchTab('image'));
+    $('#textTabButton').addEventListener('click', () => switchTab('text'));
     $('#textToolButton').addEventListener('click', activateTextTool);
     $('#canvasTextEditor').addEventListener('input', event => {
       const text = state.texts.find(layer => layer.id === editingTextId); if (!text) return;
@@ -1399,7 +1403,7 @@
   }
 
   async function init() {
-    renderBackgroundOptions(); bindEvents(); syncControls(); setCanvasRatio(); renderLayers();
+    renderBackgroundOptions(); bindEvents(); syncControls(); setCanvasRatio(); switchTab(activeTab);
     templates = await loadTemplates(); renderTemplates(); registerWebMcp();
     if (document.fonts?.ready) document.fonts.ready.then(renderCanvas);
   }

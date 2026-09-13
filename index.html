@@ -26,11 +26,11 @@
       </div>
 
       <div class="editor-tabs" role="tablist" aria-label="편집 도구 탭">
-        <button class="editor-tab active" id="editTabButton" type="button" role="tab" aria-selected="true" aria-controls="editTab" title="이미지와 문자 추가"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="4"/><path d="M12 8v8M8 12h8"/></svg><span>추가</span></button>
-        <button class="editor-tab" id="layersTabButton" type="button" role="tab" aria-selected="false" aria-controls="layersTab" title="선택한 이미지와 문구 편집"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M4 7h16M4 17h16"/><rect x="7" y="4" width="4" height="6" rx="1" fill="white"/><rect x="14" y="14" width="4" height="6" rx="1" fill="white"/></svg><span>편집</span></button>
+        <button class="editor-tab active" id="imageTabButton" type="button" role="tab" aria-selected="true" aria-controls="imageTab" title="이미지 추가 및 편집"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="4"/><circle cx="9" cy="9" r="1.5"/><path d="m4 17 5-5 4 4 3-3 4 4"/></svg><span>이미지</span></button>
+        <button class="editor-tab" id="textTabButton" type="button" role="tab" aria-selected="false" aria-controls="textTab" title="텍스트 추가 및 편집"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M5 6V4h14v2M12 4v16M8 20h8"/></svg><span>텍스트</span></button>
       </div>
 
-      <div class="tab-content active" id="editTab" role="tabpanel" aria-labelledby="editTabButton">
+      <div class="tab-content active" id="imageTab" role="tabpanel" aria-labelledby="imageTabButton">
       <section class="control-section first-section">
         <div class="section-title">
 
@@ -45,6 +45,9 @@
         <p class="status-message" id="fileMessage" role="status" aria-live="polite"></p>
       </section>
 
+      </div>
+
+      <div class="tab-content" id="textTab" role="tabpanel" aria-labelledby="textTabButton" hidden>
       <section class="control-section">
         <div class="section-title text-section-title">
 
@@ -56,14 +59,13 @@
         </button>
 
       </section>
-      <p class="add-help">추가한 컨텐츠는 선택 항목 편집에서 <br>관리할 수 있어요.</p>
       </div>
 
-      <div class="tab-content" id="layersTab" role="tabpanel" aria-labelledby="layersTabButton" hidden>
+      <div id="contentInspector">
         <section class="control-section first-section">
           <div class="section-title">
             <span id="layerCount" class="item-count">0</span>
-            <div><h2>캔버스 항목</h2><p class="section-help">이미지와 문구를 선택해 개별 편집할 수 있어요.</p></div>
+            <div><h2 id="contentListTitle">이미지 목록</h2><p class="section-help">목록에서 항목을 선택해 편집하세요.</p></div>
           </div>
           <div class="layer-list" id="layerList"></div>
         </section>

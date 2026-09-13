@@ -200,8 +200,8 @@ textarea:focus, input:focus { border-color: var(--blue); box-shadow: 0 0 0 2px r
 .brand-mark { box-shadow: none; border: 0; border-radius: 3px; }
 .button:hover { transform: none; box-shadow: none; filter: brightness(.97); }
 .button, .text-tool-button, .upload-zone, .template-item { border-radius: 6px; }
-#editTab .section-title { display: none; }
-#editTab .control-section { border: 0; padding: 0; margin-bottom: 16px; }
+#imageTab > .control-section .section-title, #textTab > .control-section .section-title { display: none; }
+#imageTab > .control-section, #textTab > .control-section { border: 0; padding: 0; margin-bottom: 16px; }
 .upload-zone { min-height: 126px; padding: 16px; align-items: flex-start; display: grid; grid-template-columns: 48px minmax(0,1fr); column-gap: 12px; background: #fff; }
 .upload-icon { grid-column: 1; grid-row: 1 / 5; align-self: center; display: grid; place-items: center; width: 48px; height: 56px; background: #f5f4f1; border-radius: 5px; }
 .upload-zone strong, .upload-zone small { grid-column: 2; }
