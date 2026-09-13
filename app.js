@@ -18,10 +18,15 @@
   let state = { ...DEFAULT_STATE, images: [] };
   let templates = [];
   let selectedLayerId = null;
+  let selectedElement = 'text';
   let activeTab = 'edit';
   let dragState = null;
   let toastTimer;
   let imageCache = new Map();
+  let elementClipboard = null;
+  const undoStack = [];
+  const redoStack = [];
+  const HISTORY_LIMIT = 40;
   const dbPromise = openTemplateDb();
 
   const $ = selector => document.querySelector(selector);
@@ -126,6 +131,49 @@
     return state.images.find(layer => layer.id === selectedLayerId) || null;
   }
 
+  function cloneState(source = state) {
+    return { ...source, images: source.images.map(layer => ({ ...layer })) };
+  }
+
+  function snapshot() {
+    return { state: cloneState(), selectedLayerId, selectedElement, activeTab };
+  }
+
+  function recordHistory(entry = snapshot()) {
+    undoStack.push(entry);
+    if (undoStack.length > HISTORY_LIMIT) undoStack.shift();
+    redoStack.length = 0;
+  }
+
+  async function restoreSnapshot(entry) {
+    try {
+      await hydrateImages(entry.state.images);
+      state = cloneState(entry.state);
+      selectedLayerId = entry.selectedLayerId;
+      selectedElement = entry.selectedElement;
+      switchTab(entry.activeTab);
+      syncControls();
+      renderLayers();
+      setCanvasRatio();
+    } catch (_) {
+      showToast('이전 상태의 이미지를 복원하지 못했습니다.');
+    }
+  }
+
+  async function undo() {
+    if (!undoStack.length) { showToast('되돌릴 작업이 없습니다.'); return; }
+    redoStack.push(snapshot());
+    await restoreSnapshot(undoStack.pop());
+    showToast('이전 작업으로 되돌렸습니다.');
+  }
+
+  async function redo() {
+    if (!redoStack.length) { showToast('다시 실행할 작업이 없습니다.'); return; }
+    undoStack.push(snapshot());
+    await restoreSnapshot(redoStack.pop());
+    showToast('작업을 다시 실행했습니다.');
+  }
+
   function syncControls() {
     $('#textInput').value = state.text;
     $('#charCount').textContent = state.text.length;
@@ -157,6 +205,7 @@
   function switchTab(tab) {
     activeTab = tab;
     const isEdit = tab === 'edit';
+    selectedElement = isEdit ? 'text' : 'image';
     $('#editTab').hidden = !isEdit;
     $('#layersTab').hidden = isEdit;
     $('#editTabButton').classList.toggle('active', isEdit);
@@ -235,6 +284,17 @@
       const y = centerY + (index - (lines.length - 1) / 2) * lineHeight;
       ctx.strokeText(line, x, y, canvas.width * .9); ctx.fillText(line, x, y, canvas.width * .9);
     });
+    if (showGuides && selectedElement === 'text') {
+      const measuredWidth = Math.max(responsiveSize * .6, ...lines.map(line => ctx.measureText(line || ' ').width));
+      const width = Math.min(canvas.width * .9, measuredWidth);
+      const height = Math.max(lineHeight, lines.length * lineHeight);
+      const left = state.textAlign === 'left' ? x : state.textAlign === 'right' ? x - width : x - width / 2;
+      const padding = canvas.width / 90;
+      ctx.strokeStyle = '#c8f135';
+      ctx.lineWidth = Math.max(3, canvas.width / 270);
+      ctx.setLineDash([canvas.width / 70, canvas.width / 110]);
+      ctx.strokeRect(left - padding, centerY - height / 2 - padding, width + padding * 2, height + padding * 2);
+    }
     ctx.restore();
   }
 
@@ -254,6 +314,7 @@
   async function handleImageFiles(fileList) {
     const files = [...fileList];
     if (!files.length) return;
+    const beforeAdd = snapshot();
     const message = $('#fileMessage');
     const validTypes = ['image/png', 'image/jpeg'];
     const additions = [];
@@ -273,9 +334,10 @@
           rotation: 0, flipX: false, flipY: false
         };
         additions.push(layer); imageCache.set(id, image);
-      } catch (_) { rejected.push(`${file.name}: 손상되었거나 읽을 수 없음`); }
+      } catch (_) { rejected.push(`${file.name}: 손상되었거나 읽을 수 없습니다`); }
     }
     if (additions.length) {
+      recordHistory(beforeAdd);
       state.images.push(...additions);
       selectedLayerId = additions.at(-1).id;
       renderLayers(); syncLayerControls(); renderCanvas(); switchTab('layers');
@@ -318,30 +380,102 @@
 
   function selectLayer(id) {
     if (!state.images.some(layer => layer.id === id)) return;
-    selectedLayerId = id; renderLayers(); renderCanvas();
+    selectedLayerId = id;
+    selectedElement = 'image';
+    if (activeTab !== 'layers') switchTab('layers');
+    renderLayers(); renderCanvas();
   }
 
   function moveLayer(id, direction) {
     const index = state.images.findIndex(layer => layer.id === id);
     const target = direction === 'up' ? index + 1 : index - 1;
     if (index < 0 || target < 0 || target >= state.images.length) return;
+    recordHistory();
     [state.images[index], state.images[target]] = [state.images[target], state.images[index]];
     selectedLayerId = id; renderLayers(); renderCanvas();
   }
 
-  function deleteSelectedLayer() {
+  function deleteSelectedLayer(confirmDelete = true, saveHistory = true) {
     const layer = selectedLayer();
-    if (!layer || !confirm(`“${layer.name}” 이미지를 삭제할까요?`)) return;
+    if (!layer || (confirmDelete && !confirm(`“${layer.name}” 이미지를 삭제할까요?`))) return;
+    if (saveHistory) recordHistory();
     const index = state.images.findIndex(item => item.id === layer.id);
     state.images.splice(index, 1); imageCache.delete(layer.id);
     selectedLayerId = state.images[Math.min(index, state.images.length - 1)]?.id || null;
     renderLayers(); renderCanvas(); showToast('이미지 항목을 삭제했습니다.');
   }
 
-  function updateSelectedLayer(key, value) {
+  function updateSelectedLayer(key, value, saveHistory = true) {
     const layer = selectedLayer();
     if (!layer) return;
+    if (saveHistory && layer[key] !== value) recordHistory();
     layer[key] = value; syncLayerControls(); renderLayers(); renderCanvas();
+  }
+
+  function copySelected(showFeedback = true) {
+    if (selectedElement === 'image') {
+      const layer = selectedLayer();
+      if (!layer) return false;
+      elementClipboard = { type: 'image', layer: { ...layer }, image: imageCache.get(layer.id) };
+      if (showFeedback) showToast('이미지를 복사했습니다.');
+      return true;
+    }
+    elementClipboard = {
+      type: 'text', text: state.text, fontSize: state.fontSize, textColor: state.textColor,
+      textX: state.textX, textY: state.textY, textAlign: state.textAlign
+    };
+    if (showFeedback) showToast('문구를 복사했습니다.');
+    return true;
+  }
+
+  function cutSelected() {
+    if (!copySelected(false)) return;
+    recordHistory();
+    if (selectedElement === 'image') {
+      deleteSelectedLayer(false, false);
+      showToast('이미지를 잘라냈습니다.');
+    } else {
+      state.text = '';
+      syncControls(); renderCanvas();
+      showToast('문구를 잘라냈습니다.');
+    }
+  }
+
+  async function pasteSelected() {
+    if (!elementClipboard) { showToast('복사한 항목이 없습니다.'); return; }
+    recordHistory();
+    if (elementClipboard.type === 'image') {
+      const source = elementClipboard.layer;
+      const id = makeId();
+      const layer = { ...source, id, name: `${source.name} 복사본`, x: Math.min(120, source.x + 3), y: Math.min(120, source.y + 3) };
+      let image = elementClipboard.image;
+      if (!image) image = await loadImageElement(layer.dataUrl);
+      state.images.push(layer);
+      imageCache.set(id, image);
+      selectedLayerId = id;
+      switchTab('layers');
+      renderLayers(); renderCanvas();
+      showToast('이미지를 붙여넣었습니다.');
+    } else {
+      const copied = elementClipboard;
+      state.text = copied.text; state.fontSize = copied.fontSize; state.textColor = copied.textColor;
+      state.textX = Math.min(95, copied.textX + 3); state.textY = Math.min(95, copied.textY + 3); state.textAlign = copied.textAlign;
+      switchTab('edit');
+      syncControls(); renderCanvas();
+      showToast('문구를 붙여넣었습니다.');
+    }
+  }
+
+  function deleteSelectedElement() {
+    if (selectedElement === 'image') {
+      if (selectedLayer()) deleteSelectedLayer(false, true);
+      return;
+    }
+    if (!state.text) return;
+    recordHistory();
+    state.text = '';
+    syncControls(); renderCanvas();
+    showToast('문구를 삭제했습니다. Ctrl+Z로 복구할 수 있어요.');
   }
 
   function setMessage(element, text, type = '') {
@@ -388,6 +522,7 @@
     if (!item) return;
     try { await hydrateImages(item.images); }
     catch (_) { setMessage($('#templateMessage'), '템플릿의 이미지 중 읽을 수 없는 항목이 있어 불러오지 않았습니다.', 'error'); return; }
+    recordHistory();
     state = { ...DEFAULT_STATE, ...item, images: item.images.map(layer => ({ ...layer })) };
     selectedLayerId = state.images.at(-1)?.id || null;
     $('#templateName').value = item.name;
@@ -458,6 +593,7 @@
   }
 
   function resetWork() {
+    recordHistory();
     state = { ...DEFAULT_STATE, images: [] }; imageCache = new Map(); selectedLayerId = null;
     $('#templateName').value = ''; setMessage($('#fileMessage'), ''); setMessage($('#templateMessage'), '');
     syncControls(); renderLayers(); setCanvasRatio(); switchTab('edit'); showToast('새 작업을 시작합니다.');
@@ -481,27 +617,48 @@
     }) || null;
   }
 
+  function hitTestText(point) {
+    const responsiveSize = state.fontSize * (canvas.width / 1080);
+    ctx.save();
+    ctx.font = `800 ${responsiveSize}px 'Noto Sans KR', sans-serif`;
+    const lines = state.text.split('\n');
+    const width = Math.min(canvas.width * .9, Math.max(responsiveSize * .6, ...lines.map(line => ctx.measureText(line || ' ').width)));
+    ctx.restore();
+    const height = Math.max(responsiveSize * 1.22, lines.length * responsiveSize * 1.22);
+    const x = canvas.width * state.textX / 100;
+    const y = canvas.height * state.textY / 100;
+    const left = state.textAlign === 'left' ? x : state.textAlign === 'right' ? x - width : x - width / 2;
+    const padding = canvas.width / 60;
+    return point.x >= left - padding && point.x <= left + width + padding
+      && point.y >= y - height / 2 - padding && point.y <= y + height / 2 + padding;
+  }
+
   function beginCanvasDrag(event) {
     const point = pointerPosition(event);
-    if (activeTab === 'layers') {
-      const hit = hitTestLayer(point) || selectedLayer(); if (!hit) return;
-      selectLayer(hit.id);
-      dragState = { type: 'layer', startX: point.x, startY: point.y, layerX: hit.x, layerY: hit.y };
+    const beforeMove = snapshot();
+    if (hitTestText(point)) {
+      switchTab('edit');
+      dragState = { type: 'text', startX: point.x, startY: point.y, textX: state.textX, textY: state.textY, beforeMove, historySaved: false };
     } else {
-      dragState = { type: 'text' };
-      state.textX = Math.max(5, Math.min(95, point.x / canvas.width * 100));
-      state.textY = Math.max(5, Math.min(95, point.y / canvas.height * 100));
-      syncControls(); renderCanvas();
+      const hit = hitTestLayer(point);
+      if (!hit) return;
+      selectLayer(hit.id);
+      dragState = { type: 'layer', startX: point.x, startY: point.y, layerX: hit.x, layerY: hit.y, beforeMove, historySaved: false };
     }
     canvas.setPointerCapture(event.pointerId); canvas.classList.add('dragging'); $('#dragTip').classList.add('hidden');
+    canvas.focus({ preventScroll: true });
   }
 
   function moveCanvasDrag(event) {
     if (!dragState) return;
     const point = pointerPosition(event);
+    if (!dragState.historySaved) {
+      recordHistory(dragState.beforeMove);
+      dragState.historySaved = true;
+    }
     if (dragState.type === 'text') {
-      state.textX = Math.max(5, Math.min(95, point.x / canvas.width * 100));
-      state.textY = Math.max(5, Math.min(95, point.y / canvas.height * 100));
+      state.textX = Math.max(5, Math.min(95, dragState.textX + (point.x - dragState.startX) / canvas.width * 100));
+      state.textY = Math.max(5, Math.min(95, dragState.textY + (point.y - dragState.startY) / canvas.height * 100));
     } else {
       const layer = selectedLayer(); if (!layer) return;
       layer.x = Math.max(-20, Math.min(120, dragState.layerX + (point.x - dragState.startX) / canvas.width * 100));
@@ -515,6 +672,26 @@
     dragState = null; canvas.classList.remove('dragging');
   }
 
+  function handleEditorShortcut(event) {
+    if (event.target.matches('input, textarea, [contenteditable="true"]')) return;
+    const key = event.key.toLowerCase();
+    const command = event.ctrlKey || event.metaKey;
+    if (command && key === 'z') {
+      event.preventDefault();
+      if (event.shiftKey) redo(); else undo();
+    } else if (command && key === 'y') {
+      event.preventDefault(); redo();
+    } else if (command && key === 'c') {
+      event.preventDefault(); copySelected();
+    } else if (command && key === 'v') {
+      event.preventDefault(); pasteSelected();
+    } else if (command && key === 'x') {
+      event.preventDefault(); cutSelected();
+    } else if (event.key === 'Delete') {
+      event.preventDefault(); deleteSelectedElement();
+    }
+  }
+
   function bindEvents() {
     $('#imageInput').addEventListener('change', event => handleImageFiles(event.target.files));
     const upload = $('#uploadZone');
@@ -524,12 +701,12 @@
     $('#editTabButton').addEventListener('click', () => switchTab('edit'));
     $('#layersTabButton').addEventListener('click', () => switchTab('layers'));
     $('#openLayersButton').addEventListener('click', () => switchTab('layers'));
-    $('#textInput').addEventListener('input', event => { state.text = event.target.value; $('#charCount').textContent = state.text.length; renderCanvas(); });
-    $('#fontSize').addEventListener('input', event => { state.fontSize = Math.max(16, Math.min(180, Number(event.target.value) || 16)); renderCanvas(); });
-    $('#textColor').addEventListener('input', event => { state.textColor = event.target.value; $('#colorValue').textContent = event.target.value.toUpperCase(); renderCanvas(); });
-    ['textX', 'textY'].forEach(id => $(`#${id}`).addEventListener('input', event => { state[id] = Number(event.target.value); renderCanvas(); }));
-    $$('.align-button').forEach(button => button.addEventListener('click', () => { state.textAlign = button.dataset.align; syncControls(); renderCanvas(); }));
-    $$('.ratio-button').forEach(button => button.addEventListener('click', () => { state.ratio = button.dataset.ratio; syncControls(); setCanvasRatio(); }));
+    $('#textInput').addEventListener('input', event => { recordHistory(); state.text = event.target.value; $('#charCount').textContent = state.text.length; renderCanvas(); });
+    $('#fontSize').addEventListener('input', event => { recordHistory(); state.fontSize = Math.max(16, Math.min(180, Number(event.target.value) || 16)); renderCanvas(); });
+    $('#textColor').addEventListener('input', event => { recordHistory(); state.textColor = event.target.value; $('#colorValue').textContent = event.target.value.toUpperCase(); renderCanvas(); });
+    ['textX', 'textY'].forEach(id => $(`#${id}`).addEventListener('input', event => { recordHistory(); state[id] = Number(event.target.value); renderCanvas(); }));
+    $$('.align-button').forEach(button => button.addEventListener('click', () => { if (state.textAlign !== button.dataset.align) recordHistory(); state.textAlign = button.dataset.align; syncControls(); renderCanvas(); }));
+    $$('.ratio-button').forEach(button => button.addEventListener('click', () => { if (state.ratio !== button.dataset.ratio) recordHistory(); state.ratio = button.dataset.ratio; syncControls(); setCanvasRatio(); }));
     $('#layerList').addEventListener('click', event => {
       const button = event.target.closest('[data-layer-action]'); if (!button) return;
       const id = button.closest('.layer-item').dataset.layerId;
@@ -562,6 +739,7 @@
     canvas.addEventListener('pointermove', moveCanvasDrag);
     canvas.addEventListener('pointerup', endCanvasDrag);
     canvas.addEventListener('pointercancel', endCanvasDrag);
+    document.addEventListener('keydown', handleEditorShortcut);
   }
 
   function registerWebMcp() {
@@ -576,13 +754,14 @@
       {
         name: 'set_canvas_ratio', title: '캔버스 비율 변경', description: '캔버스 비율을 1:1, 4:5, 9:16 중 하나로 변경합니다.',
         inputSchema: { type: 'object', properties: { ratio: { type: 'string', enum: ['1:1', '4:5', '9:16'] } }, required: ['ratio'], additionalProperties: false }, annotations: { readOnlyHint: false, untrustedContentHint: false },
-        execute: ({ ratio }) => { if (!RATIOS[ratio]) throw new Error('지원하지 않는 비율입니다.'); state.ratio = ratio; syncControls(); setCanvasRatio(); return { ratio, size: RATIOS[ratio] }; }
+        execute: ({ ratio }) => { if (!RATIOS[ratio]) throw new Error('지원하지 않는 비율입니다.'); if (state.ratio !== ratio) recordHistory(); state.ratio = ratio; syncControls(); setCanvasRatio(); return { ratio, size: RATIOS[ratio] }; }
       },
       {
         name: 'transform_image_layer', title: '이미지 항목 변형', description: '선택한 이미지 항목의 위치, 크기, 회전, 대칭을 변경합니다.',
         inputSchema: { type: 'object', properties: { id: { type: 'string' }, x: { type: 'number', minimum: -20, maximum: 120 }, y: { type: 'number', minimum: -20, maximum: 120 }, scale: { type: 'number', minimum: 10, maximum: 240 }, rotation: { type: 'number', minimum: -180, maximum: 180 }, flipX: { type: 'boolean' }, flipY: { type: 'boolean' } }, required: ['id'], additionalProperties: false }, annotations: { readOnlyHint: false, untrustedContentHint: false },
         execute: input => {
           const layer = state.images.find(item => item.id === input.id); if (!layer) throw new Error('이미지 항목을 찾을 수 없습니다.');
+          recordHistory();
           ['x', 'y', 'scale', 'rotation', 'flipX', 'flipY'].forEach(key => { if (input[key] !== undefined) layer[key] = input[key]; });
           selectedLayerId = layer.id; renderLayers(); renderCanvas(); return { updated: true, id: layer.id };
         }

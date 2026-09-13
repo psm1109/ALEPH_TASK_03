@@ -98,6 +98,7 @@ textarea:focus, input:focus { border-color: var(--blue); box-shadow: 0 0 0 2px r
 .ratio-button.active { background: var(--ink); color: #fff; }
 .canvas-wrap { width: min(100%, 650px); height: min(67vh, 650px); min-height: 420px; margin: 0 auto; display: grid; place-items: center; position: relative; }
 #previewCanvas { display: block; max-width: 100%; max-height: 100%; width: auto; height: auto; box-shadow: var(--shadow); background: #242622; cursor: grab; touch-action: none; }
+#previewCanvas:focus-visible { outline: 4px solid var(--lime); outline-offset: 5px; }
 #previewCanvas.dragging { cursor: grabbing; }
 .drag-tip { position: absolute; bottom: 16px; left: 50%; transform: translateX(-50%); background: rgba(23,24,21,.8); color: white; padding: 7px 12px; border-radius: 99px; font-size: .7rem; pointer-events: none; opacity: 1; transition: opacity .4s; white-space: nowrap; }
 .drag-tip.hidden { opacity: 0; }
