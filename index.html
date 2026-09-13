@@ -116,6 +116,10 @@
     </aside>
 
     <section class="stage" aria-label="이미지 미리보기">
+      <button class="background-trigger" id="backgroundButton" type="button" aria-haspopup="dialog" aria-controls="backgroundDialog">
+        <span class="background-trigger-icon" aria-hidden="true">▧</span>
+        <span>배경 선택</span>
+      </button>
       <div class="stage-head">
         <div>
           <p class="eyebrow">LIVE CANVAS</p>
@@ -130,10 +134,6 @@
 
       <div class="canvas-wrap" id="canvasWrap">
         <canvas id="previewCanvas" width="1080" height="1080" tabindex="0" aria-label="편집 결과 미리보기. 이미지나 문구를 클릭해 선택할 수 있습니다."></canvas>
-        <button class="background-trigger" id="backgroundButton" type="button" aria-haspopup="dialog" aria-controls="backgroundDialog">
-          <span class="background-trigger-icon" aria-hidden="true">▧</span>
-          <span>배경 선택</span>
-        </button>
         <div class="drag-tip" id="dragTip">문구를 드래그해 옮겨보세요</div>
       </div>
       <dialog class="background-dialog" id="backgroundDialog" aria-labelledby="backgroundDialogTitle">

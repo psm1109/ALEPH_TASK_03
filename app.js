@@ -240,7 +240,6 @@
     canvas.height = size.height;
     $('#canvasSize').textContent = `${size.width} × ${size.height} px`;
     renderCanvas();
-    positionBackgroundButton();
   }
 
   function drawBackground() {
@@ -374,15 +373,6 @@
     renderCanvas();
     $('#backgroundDialog').close();
     showToast(`${BACKGROUNDS.find(background => background.id === id).name} 배경을 적용했습니다.`);
-  }
-
-  function positionBackgroundButton() {
-    requestAnimationFrame(() => {
-      const wrap = $('#canvasWrap').getBoundingClientRect();
-      const canvasRect = canvas.getBoundingClientRect();
-      $('#backgroundButton').style.left = `${Math.max(10, canvasRect.left - wrap.left + 12)}px`;
-      $('#backgroundButton').style.top = `${Math.max(10, canvasRect.top - wrap.top + 12)}px`;
-    });
   }
 
   function loadImageElement(dataUrl) {
@@ -863,7 +853,6 @@
     canvas.addEventListener('pointerup', endCanvasDrag);
     canvas.addEventListener('pointercancel', endCanvasDrag);
     document.addEventListener('keydown', handleEditorShortcut);
-    window.addEventListener('resize', positionBackgroundButton);
   }
 
   function registerWebMcp() {
@@ -903,7 +892,6 @@
     renderBackgroundOptions(); bindEvents(); syncControls(); setCanvasRatio(); renderLayers();
     templates = await loadTemplates(); renderTemplates(); registerWebMcp();
     if (document.fonts?.ready) document.fonts.ready.then(renderCanvas);
-    if ('ResizeObserver' in window) new ResizeObserver(positionBackgroundButton).observe(canvas);
   }
 
   init();
