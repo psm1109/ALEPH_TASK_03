@@ -305,6 +305,32 @@
     });
   }
 
+  async function sanitizeImageFile(file) {
+    const originalDataUrl = await readAsDataURL(file);
+    const decodedImage = await loadImageElement(originalDataUrl);
+    const sanitizer = document.createElement('canvas');
+    sanitizer.width = decodedImage.naturalWidth;
+    sanitizer.height = decodedImage.naturalHeight;
+    const sanitizerContext = sanitizer.getContext('2d');
+    if (!sanitizerContext) throw new Error('이미지 처리 도구를 사용할 수 없습니다.');
+    sanitizerContext.imageSmoothingEnabled = true;
+    sanitizerContext.imageSmoothingQuality = 'high';
+    sanitizerContext.drawImage(decodedImage, 0, 0, sanitizer.width, sanitizer.height);
+
+    const sanitizedBlob = await new Promise((resolve, reject) => {
+      sanitizer.toBlob(
+        blob => blob ? resolve(blob) : reject(new Error('이미지를 다시 인코딩하지 못했습니다.')),
+        file.type,
+        file.type === 'image/jpeg' ? .94 : undefined
+      );
+    });
+    const dataUrl = await readAsDataURL(sanitizedBlob);
+    const image = await loadImageElement(dataUrl);
+    sanitizer.width = 1;
+    sanitizer.height = 1;
+    return { dataUrl, image };
+  }
+
   async function hydrateImages(layers) {
     const nextCache = new Map();
     await Promise.all(layers.map(async layer => nextCache.set(layer.id, await loadImageElement(layer.dataUrl))));
@@ -323,8 +349,7 @@
       if (!validTypes.includes(file.type)) { rejected.push(`${file.name}: PNG 또는 JPEG 파일이 아님`); continue; }
       if (file.size > MAX_FILE_SIZE) { rejected.push(`${file.name}: 15MB 초과`); continue; }
       try {
-        const dataUrl = await readAsDataURL(file);
-        const image = await loadImageElement(dataUrl);
+        const { dataUrl, image } = await sanitizeImageFile(file);
         const id = makeId();
         const offset = Math.min(state.images.length + additions.length, 4) * 3;
         const coverScale = Math.min(240, Math.max(100, (canvas.height / canvas.width) * (image.naturalWidth / image.naturalHeight) * 100));
@@ -342,7 +367,7 @@
       selectedLayerId = additions.at(-1).id;
       renderLayers(); syncLayerControls(); renderCanvas(); switchTab('layers');
     }
-    if (additions.length && !rejected.length) setMessage(message, `${additions.length}개 이미지를 추가했습니다.`, 'success');
+    if (additions.length && !rejected.length) setMessage(message, `${additions.length}개 이미지의 메타데이터를 제거하고 추가했습니다.`, 'success');
     else if (additions.length) setMessage(message, `${additions.length}개 추가, ${rejected.length}개 거부: ${rejected.join(' · ')}`, 'error');
     else setMessage(message, `${rejected.join(' · ')}. 기존 작업은 그대로 유지됐습니다.`, 'error');
     $('#imageInput').value = '';
