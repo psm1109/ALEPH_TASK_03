@@ -906,7 +906,7 @@
   function renderTemplates() {
     const list = $('#templateList'); $('#templateCount').textContent = templates.length;
     if (!templates.length) {
-      list.innerHTML = '<div class="template-empty">아직 저장된 템플릿이 없어요.<br>현재 작업을 첫 템플릿으로 저장해보세요.</div>'; return;
+      list.innerHTML = '<div class="template-empty">아직 저장된 템플릿이 없어요<br>첫 템플릿을 만들어보세요</div>'; return;
     }
     list.innerHTML = templates.map(item => `<article class="template-item" data-id="${escapeHtml(item.id)}">
       ${item.thumbnail ? `<img class="template-thumbnail" src="${escapeHtml(item.thumbnail)}" alt="${escapeHtml(item.name)} 미리보기">` : ''}
