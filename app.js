@@ -26,7 +26,7 @@
   ];
   const DEFAULT_STATE = {
     ratio: '1:1', text: '오늘도\n내가 해냄', fontSize: 68, textColor: '#ffffff',
-    textX: 50, textY: 77, textAlign: 'center', backgroundId: 'aurora', images: []
+    textX: 50, textY: 77, textAlign: 'center', textBoxWidth: 60, textBoxHeight: 20, backgroundId: 'aurora', images: []
   };
 
   let state = { ...DEFAULT_STATE, images: [] };
@@ -113,7 +113,9 @@
     if (!requiredStrings.every(key => typeof item[key] === 'string')) return null;
     if (!RATIOS[item.ratio] || !['left', 'center', 'right'].includes(item.textAlign)) return null;
     if (!/^#[0-9a-f]{6}$/i.test(item.textColor)) return null;
-    if (!isFiniteRange(item.fontSize, 16, 180) || !isFiniteRange(item.textX, 5, 95) || !isFiniteRange(item.textY, 5, 95)) return null;
+    const textBoxWidth = item.textBoxWidth === undefined ? DEFAULT_STATE.textBoxWidth : item.textBoxWidth;
+    const textBoxHeight = item.textBoxHeight === undefined ? DEFAULT_STATE.textBoxHeight : item.textBoxHeight;
+    if (!isFiniteRange(item.fontSize, 16, 180) || !isFiniteRange(item.textX, 5, 95) || !isFiniteRange(item.textY, 5, 95) || !isFiniteRange(textBoxWidth, 15, 90) || !isFiniteRange(textBoxHeight, 8, 95)) return null;
     if (!item.name.trim() || item.name.length > 30 || item.text.length > 120) return null;
 
     let images;
@@ -134,7 +136,7 @@
     return {
       id: item.id, name: item.name, ratio: item.ratio, text: item.text,
       fontSize: item.fontSize, textColor: item.textColor, textX: item.textX,
-      textY: item.textY, textAlign: item.textAlign, backgroundId, createdAt: item.createdAt, images
+      textY: item.textY, textAlign: item.textAlign, textBoxWidth, textBoxHeight, backgroundId, createdAt: item.createdAt, images
     };
   }
 
@@ -229,7 +231,7 @@
     $('#editTabButton').setAttribute('aria-selected', String(isEdit));
     $('#layersTabButton').setAttribute('aria-selected', String(!isEdit));
     if (!isEdit && !selectedLayerId && state.images.length) selectedLayerId = state.images.at(-1).id;
-    $('#dragTip').textContent = isEdit ? '문구를 드래그해 옮겨보세요' : (state.images.length ? '선택한 이미지를 드래그해 옮겨보세요' : '먼저 이미지를 추가해주세요');
+    $('#dragTip').textContent = isEdit ? '문구 이동 · 사각형 핸들로 너비 조절' : (state.images.length ? '선택한 이미지를 드래그해 옮겨보세요' : '먼저 이미지를 추가해주세요');
     renderLayers();
     renderCanvas();
   }
@@ -307,34 +309,92 @@
     ctx.restore();
   }
 
+  function graphemes(value) {
+    if ('Segmenter' in Intl) return [...new Intl.Segmenter('ko', { granularity: 'grapheme' }).segment(value)].map(part => part.segment);
+    return Array.from(value);
+  }
+
+  function wrapTextParagraph(paragraph, maxWidth) {
+    if (!paragraph) return [''];
+    const lines = [];
+    let line = '';
+    graphemes(paragraph).forEach(character => {
+      const candidate = line + character;
+      if (line && ctx.measureText(candidate).width > maxWidth) {
+        lines.push(line);
+        line = character;
+      } else {
+        line = candidate;
+      }
+    });
+    lines.push(line);
+    return lines;
+  }
+
+  function textLayout() {
+    const responsiveSize = state.fontSize * (canvas.width / 1080);
+    const lineHeight = responsiveSize * 1.22;
+    const padding = canvas.width / 90;
+    const boxWidth = canvas.width * state.textBoxWidth / 100;
+    const contentWidth = Math.max(responsiveSize * .6, boxWidth - padding * 2);
+    ctx.save();
+    ctx.font = `800 ${responsiveSize}px 'Noto Sans KR', sans-serif`;
+    const lines = state.text.split('\n').flatMap(paragraph => wrapTextParagraph(paragraph, contentWidth));
+    ctx.restore();
+    const x = canvas.width * state.textX / 100;
+    const centerY = canvas.height * state.textY / 100;
+    const contentHeight = Math.max(lineHeight, lines.length * lineHeight) + padding * 2;
+    const height = Math.max(contentHeight, canvas.height * state.textBoxHeight / 100);
+    const left = state.textAlign === 'left' ? x : state.textAlign === 'right' ? x - boxWidth : x - boxWidth / 2;
+    const drawX = state.textAlign === 'left' ? left + padding : state.textAlign === 'right' ? left + boxWidth - padding : left + boxWidth / 2;
+    return { responsiveSize, lineHeight, padding, boxWidth, contentWidth, contentHeight, lines, x, centerY, height, left, drawX, top: centerY - height / 2 };
+  }
+
+  function textResizeHandles(layout = textLayout()) {
+    const size = Math.max(16, canvas.width / 54);
+    const right = layout.left + layout.boxWidth;
+    const bottom = layout.top + layout.height;
+    const centerX = layout.left + layout.boxWidth / 2;
+    return [
+      { direction: 'nw', x: layout.left, y: layout.top, size },
+      { direction: 'n', x: centerX, y: layout.top, size },
+      { direction: 'ne', x: right, y: layout.top, size },
+      { direction: 'e', x: right, y: layout.centerY, size },
+      { direction: 'se', x: right, y: bottom, size },
+      { direction: 's', x: centerX, y: bottom, size },
+      { direction: 'sw', x: layout.left, y: bottom, size },
+      { direction: 'w', x: layout.left, y: layout.centerY, size }
+    ];
+  }
+
   function renderCanvas(showGuides = true) {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     drawBackground();
     state.images.forEach(layer => drawLayer(layer, showGuides && activeTab === 'layers'));
     ctx.save();
-    const responsiveSize = state.fontSize * (canvas.width / 1080);
+    const layout = textLayout();
+    const { responsiveSize, lineHeight, lines, drawX, centerY, left, top, boxWidth, height } = layout;
     ctx.font = `800 ${responsiveSize}px 'Noto Sans KR', sans-serif`;
     ctx.textAlign = state.textAlign; ctx.textBaseline = 'middle';
     ctx.fillStyle = state.textColor; ctx.strokeStyle = 'rgba(0,0,0,.42)';
     ctx.lineWidth = Math.max(3, responsiveSize * .075); ctx.lineJoin = 'round';
-    const x = canvas.width * state.textX / 100;
-    const centerY = canvas.height * state.textY / 100;
-    const lines = state.text.split('\n');
-    const lineHeight = responsiveSize * 1.22;
     lines.forEach((line, index) => {
       const y = centerY + (index - (lines.length - 1) / 2) * lineHeight;
-      ctx.strokeText(line, x, y, canvas.width * .9); ctx.fillText(line, x, y, canvas.width * .9);
+      ctx.strokeText(line, drawX, y); ctx.fillText(line, drawX, y);
     });
     if (showGuides && selectedElement === 'text') {
-      const measuredWidth = Math.max(responsiveSize * .6, ...lines.map(line => ctx.measureText(line || ' ').width));
-      const width = Math.min(canvas.width * .9, measuredWidth);
-      const height = Math.max(lineHeight, lines.length * lineHeight);
-      const left = state.textAlign === 'left' ? x : state.textAlign === 'right' ? x - width : x - width / 2;
-      const padding = canvas.width / 90;
       ctx.strokeStyle = '#c8f135';
       ctx.lineWidth = Math.max(3, canvas.width / 270);
       ctx.setLineDash([canvas.width / 70, canvas.width / 110]);
-      ctx.strokeRect(left - padding, centerY - height / 2 - padding, width + padding * 2, height + padding * 2);
+      ctx.strokeRect(left, top, boxWidth, height);
+      ctx.setLineDash([]);
+      textResizeHandles(layout).forEach(handle => {
+        ctx.fillStyle = '#c8f135';
+        ctx.fillRect(handle.x - handle.size / 2, handle.y - handle.size / 2, handle.size, handle.size);
+        ctx.strokeStyle = '#171815';
+        ctx.lineWidth = Math.max(2, canvas.width / 540);
+        ctx.strokeRect(handle.x - handle.size / 2, handle.y - handle.size / 2, handle.size, handle.size);
+      });
     }
     ctx.restore();
   }
@@ -525,7 +585,8 @@
     }
     elementClipboard = {
       type: 'text', text: state.text, fontSize: state.fontSize, textColor: state.textColor,
-      textX: state.textX, textY: state.textY, textAlign: state.textAlign
+      textX: state.textX, textY: state.textY, textAlign: state.textAlign,
+      textBoxWidth: state.textBoxWidth, textBoxHeight: state.textBoxHeight
     };
     if (showFeedback) showToast('문구를 복사했습니다.');
     return true;
@@ -563,6 +624,7 @@
       const copied = elementClipboard;
       state.text = copied.text; state.fontSize = copied.fontSize; state.textColor = copied.textColor;
       state.textX = Math.min(95, copied.textX + 3); state.textY = Math.min(95, copied.textY + 3); state.textAlign = copied.textAlign;
+      state.textBoxWidth = copied.textBoxWidth; state.textBoxHeight = copied.textBoxHeight;
       switchTab('edit');
       syncControls(); renderCanvas();
       showToast('문구를 붙여넣었습니다.');
@@ -721,25 +783,36 @@
   }
 
   function hitTestText(point) {
-    const responsiveSize = state.fontSize * (canvas.width / 1080);
-    ctx.save();
-    ctx.font = `800 ${responsiveSize}px 'Noto Sans KR', sans-serif`;
-    const lines = state.text.split('\n');
-    const width = Math.min(canvas.width * .9, Math.max(responsiveSize * .6, ...lines.map(line => ctx.measureText(line || ' ').width)));
-    ctx.restore();
-    const height = Math.max(responsiveSize * 1.22, lines.length * responsiveSize * 1.22);
-    const x = canvas.width * state.textX / 100;
-    const y = canvas.height * state.textY / 100;
-    const left = state.textAlign === 'left' ? x : state.textAlign === 'right' ? x - width : x - width / 2;
-    const padding = canvas.width / 60;
-    return point.x >= left - padding && point.x <= left + width + padding
-      && point.y >= y - height / 2 - padding && point.y <= y + height / 2 + padding;
+    const layout = textLayout();
+    return point.x >= layout.left && point.x <= layout.left + layout.boxWidth
+      && point.y >= layout.top && point.y <= layout.top + layout.height;
+  }
+
+  function hitTestTextResizeHandle(point) {
+    if (selectedElement !== 'text') return null;
+    return textResizeHandles().find(handle => {
+      const hitSize = handle.size * 1.5;
+      return Math.abs(point.x - handle.x) <= hitSize / 2 && Math.abs(point.y - handle.y) <= hitSize / 2;
+    }) || null;
+  }
+
+  function setTextResizeCursor(direction = '') {
+    const cursors = { n: 'ns-resize', s: 'ns-resize', e: 'ew-resize', w: 'ew-resize', ne: 'nesw-resize', sw: 'nesw-resize', nw: 'nwse-resize', se: 'nwse-resize' };
+    canvas.style.cursor = cursors[direction] || '';
   }
 
   function beginCanvasDrag(event) {
     const point = pointerPosition(event);
     const beforeMove = snapshot();
-    if (hitTestText(point)) {
+    const resizeHandle = hitTestTextResizeHandle(point);
+    if (resizeHandle) {
+      const layout = textLayout();
+      dragState = {
+        type: 'text-resize', direction: resizeHandle.direction, beforeMove, historySaved: false,
+        left: layout.left, right: layout.left + layout.boxWidth, top: layout.top, bottom: layout.top + layout.height,
+        minHeight: Math.min(canvas.height * .95, layout.contentHeight)
+      };
+    } else if (hitTestText(point)) {
       switchTab('edit');
       dragState = { type: 'text', startX: point.x, startY: point.y, textX: state.textX, textY: state.textY, beforeMove, historySaved: false };
     } else {
@@ -749,17 +822,36 @@
       dragState = { type: 'layer', startX: point.x, startY: point.y, layerX: hit.x, layerY: hit.y, beforeMove, historySaved: false };
     }
     canvas.setPointerCapture(event.pointerId); canvas.classList.add('dragging'); $('#dragTip').classList.add('hidden');
+    setTextResizeCursor(dragState.type === 'text-resize' ? dragState.direction : '');
     canvas.focus({ preventScroll: true });
   }
 
   function moveCanvasDrag(event) {
-    if (!dragState) return;
     const point = pointerPosition(event);
+    if (!dragState) {
+      setTextResizeCursor(hitTestTextResizeHandle(point)?.direction);
+      return;
+    }
     if (!dragState.historySaved) {
       recordHistory(dragState.beforeMove);
       dragState.historySaved = true;
     }
-    if (dragState.type === 'text') {
+    if (dragState.type === 'text-resize') {
+      const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
+      const minWidth = canvas.width * .15;
+      const maxWidth = canvas.width * .9;
+      const maxHeight = canvas.height * .95;
+      let { left, right, top, bottom } = dragState;
+      if (dragState.direction.includes('w')) left = clamp(point.x, right - maxWidth, right - minWidth);
+      if (dragState.direction.includes('e')) right = clamp(point.x, left + minWidth, left + maxWidth);
+      if (dragState.direction.includes('n')) top = clamp(point.y, bottom - maxHeight, bottom - dragState.minHeight);
+      if (dragState.direction.includes('s')) bottom = clamp(point.y, top + dragState.minHeight, top + maxHeight);
+      state.textBoxWidth = (right - left) / canvas.width * 100;
+      state.textBoxHeight = (bottom - top) / canvas.height * 100;
+      state.textY = clamp((top + bottom) / 2 / canvas.height * 100, 5, 95);
+      const anchorX = state.textAlign === 'left' ? left : state.textAlign === 'right' ? right : (left + right) / 2;
+      state.textX = clamp(anchorX / canvas.width * 100, 5, 95);
+    } else if (dragState.type === 'text') {
       state.textX = Math.max(5, Math.min(95, dragState.textX + (point.x - dragState.startX) / canvas.width * 100));
       state.textY = Math.max(5, Math.min(95, dragState.textY + (point.y - dragState.startY) / canvas.height * 100));
     } else {
@@ -772,7 +864,7 @@
 
   function endCanvasDrag() {
     if (dragState?.type === 'layer') renderLayers();
-    dragState = null; canvas.classList.remove('dragging');
+    dragState = null; canvas.classList.remove('dragging'); setTextResizeCursor();
   }
 
   function handleEditorShortcut(event) {
@@ -863,7 +955,7 @@
       {
         name: 'get_editor_state', title: '편집 상태 확인', description: '현재 비율, 문구, 이미지 항목과 선택 상태를 확인합니다.',
         inputSchema: { type: 'object', properties: {}, additionalProperties: false }, annotations: { readOnlyHint: true, untrustedContentHint: false },
-        execute: () => ({ ratio: state.ratio, backgroundId: state.backgroundId, text: state.text, imageCount: state.images.length, selectedLayerId, images: state.images.map(({ id, name, x, y, scale, rotation, flipX, flipY }) => ({ id, name, x, y, scale, rotation, flipX, flipY })), templateCount: templates.length })
+        execute: () => ({ ratio: state.ratio, backgroundId: state.backgroundId, text: state.text, textBoxWidth: state.textBoxWidth, textBoxHeight: state.textBoxHeight, imageCount: state.images.length, selectedLayerId, images: state.images.map(({ id, name, x, y, scale, rotation, flipX, flipY }) => ({ id, name, x, y, scale, rotation, flipX, flipY })), templateCount: templates.length })
       },
       {
         name: 'set_canvas_ratio', title: '캔버스 비율 변경', description: '캔버스 비율을 1:1, 4:5, 9:16 중 하나로 변경합니다.',

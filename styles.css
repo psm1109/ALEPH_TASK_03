@@ -90,6 +90,7 @@ textarea:focus, input:focus { border-color: var(--blue); box-shadow: 0 0 0 2px r
 .transform-buttons button { min-height: 39px; border: 1px solid var(--line); background: #fff; font-size: .73rem; font-weight: 800; cursor: pointer; }.transform-buttons button.active { background: var(--ink); border-color: var(--ink); color: #fff; box-shadow: 2px 2px 0 var(--lime); }
 .transform-buttons span { margin-right: 4px; font-size: 1rem; }
 .layer-drag-help { margin: 12px 0 0; color: var(--muted); font-size: .68rem; line-height: 1.5; }
+.text-box-help { margin: 11px 0 0; color: var(--muted); font-size: .68rem; line-height: 1.5; }
 
 .stage { display: grid; min-width: 0; grid-template-rows: auto 32px; background: #fff; }
 .stage-canvas-area { --stage-inline-padding: clamp(22px, 4vw, 60px); position: relative; width: 100%; padding: 27px var(--stage-inline-padding); display: flex; min-height: 0; flex-direction: column; background-color: #e9e6df; background-image: linear-gradient(45deg, rgba(255,255,255,.35) 25%, transparent 25%), linear-gradient(-45deg, rgba(255,255,255,.35) 25%, transparent 25%), linear-gradient(45deg, transparent 75%, rgba(255,255,255,.35) 75%), linear-gradient(-45deg, transparent 75%, rgba(255,255,255,.35) 75%); background-size: 22px 22px; background-position: 0 0, 0 11px, 11px -11px, -11px 0px; }
