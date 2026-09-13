@@ -44,13 +44,15 @@ button { color: inherit; }
 .tab-content[hidden] { display: none; }
 .section-title { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
 .section-title h2, .section-title h3 { margin: 0; font-size: 1rem; }
+.text-section-title { justify-content: space-between; }.text-section-title > div { display: flex; align-items: center; gap: 10px; }
+.mini-add-button { min-height: 32px; padding: 0 9px; border: 1px solid var(--ink); background: #fff; font-size: .7rem; font-weight: 800; cursor: pointer; }
+.text-controls { min-width: 0; margin: 0; padding: 0; border: 0; }.text-controls:disabled { opacity: .45; }
 .step { min-width: 33px; height: 24px; display: grid; place-items: center; background: var(--lime); border: 1px solid var(--ink); font-size: .68rem; font-weight: 800; }
 .step.coral { background: var(--coral); }.step.ink { background: var(--ink); color: #fff; }
 .upload-zone { border: 1.5px dashed #a7a39a; min-height: 118px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; cursor: pointer; background: #faf8f3; transition: border .2s, background .2s; }
 .upload-zone.dragover { border-color: var(--blue); background: #eff0ff; }
 .upload-zone input, .json-actions input { display: none; }
 .upload-zone strong { font-size: .9rem; }.upload-zone small { color: var(--muted); font-size: .75rem; }.upload-icon { font-size: 1.55rem; line-height: 1; }
-.layer-shortcut { width: 100%; min-height: 38px; border: 0; border-bottom: 1px solid var(--ink); background: transparent; display: flex; align-items: center; justify-content: space-between; padding: 0 2px; font-size: .78rem; font-weight: 800; cursor: pointer; }
 .status-message { min-height: 20px; margin: 6px 0 0; color: var(--muted); font-size: .76rem; line-height: 1.45; }
 .status-message.error { color: #b42318; }.status-message.success { color: #247546; }
 .slider-row { margin-top: 12px; display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 6px; }
@@ -77,6 +79,7 @@ textarea:focus, input:focus { border-color: var(--blue); box-shadow: 0 0 0 2px r
 .layer-item.active { border-color: var(--ink); box-shadow: 3px 3px 0 var(--lime); }
 .layer-select { min-width: 0; padding: 0; display: grid; grid-template-columns: 42px minmax(0,1fr); gap: 9px; align-items: center; border: 0; background: transparent; text-align: left; cursor: pointer; }
 .layer-thumb { width: 42px; height: 42px; object-fit: cover; background: #e7e4dd; }
+.layer-thumb.text-thumb { display: grid; place-items: center; background: var(--coral); border: 1px solid var(--ink); font-weight: 900; }
 .layer-copy { min-width: 0; }.layer-copy strong { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .76rem; }.layer-copy small { color: var(--muted); font-size: .66rem; }
 .layer-order { display: grid; grid-template-columns: 28px 28px; gap: 3px; }
 .layer-order button { width: 28px; height: 28px; padding: 0; border: 1px solid var(--line); background: #faf8f3; font-size: .72rem; cursor: pointer; }

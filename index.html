@@ -44,14 +44,15 @@
           <small>EXIF·위치 정보 자동 제거</small>
         </label>
         <p class="status-message" id="fileMessage" role="status" aria-live="polite"></p>
-        <button class="layer-shortcut" id="openLayersButton" type="button">추가한 이미지 항목 관리 <span aria-hidden="true">→</span></button>
       </section>
 
       <section class="control-section">
-        <div class="section-title">
-          <span class="step coral">02</span>
-          <h2>문구</h2>
+        <div class="section-title text-section-title">
+          <div><span class="step coral">02</span><h2>문구</h2></div>
+          <button class="mini-add-button" id="addTextButton" type="button">＋ 문구 추가</button>
         </div>
+        <fieldset class="text-controls" id="textControls">
+          <legend class="sr-only">선택한 문구 편집</legend>
         <label class="field text-field">한글 문구
           <textarea id="textInput" rows="3" maxlength="120">오늘도\n내가 해냄</textarea>
           <span class="char-count"><b id="charCount">10</b>/120</span>
@@ -74,6 +75,7 @@
           <label class="field">세로 위치 <input id="textY" type="range" min="5" max="95" value="77"></label>
         </div>
         <p class="text-box-help">캔버스에서 문구를 선택한 뒤 테두리 핸들을 드래그해 상하좌우 또는 대각선으로 크기를 조절하세요.</p>
+        </fieldset>
       </section>
       </div>
 
@@ -81,7 +83,7 @@
         <section class="control-section first-section">
           <div class="section-title">
             <span class="step ink">LAY</span>
-            <div><h2>이미지 항목</h2><p class="section-help">위에 있는 항목이 카드의 앞쪽에 보여요.</p></div>
+            <div><h2>캔버스 항목</h2><p class="section-help">이미지와 문구를 선택해 개별 편집할 수 있어요.</p></div>
           </div>
           <div class="layer-list" id="layerList"></div>
         </section>
