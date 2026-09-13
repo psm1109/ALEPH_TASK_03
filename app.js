@@ -11,6 +11,7 @@
     '9:16': { width: 1080, height: 1920 }
   };
   const BACKGROUNDS = [
+    { id: 'transparent', name: '투명', mood: 'PNG 투명 배경', preview: 'linear-gradient(45deg,#deddd7 25%,transparent 25%),linear-gradient(-45deg,#deddd7 25%,transparent 25%),linear-gradient(45deg,transparent 75%,#deddd7 75%),linear-gradient(-45deg,transparent 75%,#deddd7 75%)' },
     { id: 'aurora', name: '오로라', mood: '선명한 그라데이션', preview: 'linear-gradient(135deg,#5864ff 0%,#923cff 52%,#ff745f 100%)' },
     { id: 'sunrise', name: '선라이즈', mood: '따뜻하고 밝게', preview: 'linear-gradient(135deg,#ff6559,#ffb83f 58%,#fff0b7)' },
     { id: 'ocean', name: '딥 오션', mood: '차분하고 깊게', preview: 'linear-gradient(135deg,#071946,#0b69a7 55%,#35d0ba)' },
@@ -283,6 +284,7 @@
   }
 
   function drawBackground() {
+    if (state.backgroundId === 'transparent') return;
     const palettes = {
       aurora: ['#5864ff', '#923cff', '#ff745f'], sunrise: ['#ff6559', '#ffb83f', '#fff0b7'],
       ocean: ['#071946', '#0b69a7', '#35d0ba'], mint: ['#c8f135', '#71dbb8', '#ecffe0'],
@@ -570,6 +572,11 @@
       const background = BACKGROUNDS.find(item => item.id === button.dataset.backgroundId);
       const swatch = button.querySelector('.background-swatch');
       swatch.style.background = background.preview;
+      if (background.id === 'transparent') {
+        swatch.style.backgroundColor = '#f8f7f2';
+        swatch.style.backgroundSize = '14px 14px';
+        swatch.style.backgroundPosition = '0 0, 0 7px, 7px -7px, -7px 0';
+      }
       if (background.id === 'grid') swatch.style.backgroundSize = '14px 14px';
       if (background.id === 'dots') swatch.style.backgroundSize = '18px 18px';
     });
@@ -1027,9 +1034,9 @@
     }) || null;
   }
 
-  function setResizeCursor(direction = '') {
+  function setResizeCursor(direction = '', canMove = false) {
     const cursors = { n: 'ns-resize', s: 'ns-resize', e: 'ew-resize', w: 'ew-resize', ne: 'nesw-resize', sw: 'nesw-resize', nw: 'nwse-resize', se: 'nwse-resize' };
-    canvas.style.cursor = cursors[direction] || (textToolActive ? 'text' : '');
+    canvas.style.cursor = cursors[direction] || (textToolActive ? 'text' : canMove ? (dragState ? 'grabbing' : 'grab') : 'default');
   }
 
   function resizeTextBox(text, direction, bounds, point) {
@@ -1125,14 +1132,16 @@
       }
     }
     canvas.setPointerCapture(event.pointerId); canvas.classList.add('dragging'); $('#dragTip').classList.add('hidden');
-    setResizeCursor(dragState.type.endsWith('resize') ? dragState.direction : '');
+    setResizeCursor(dragState.type.endsWith('resize') ? dragState.direction : '', ['text', 'layer'].includes(dragState.type));
     canvas.focus({ preventScroll: true });
   }
 
   function moveCanvasDrag(event) {
     const point = pointerPosition(event);
     if (!dragState) {
-      setResizeCursor((hitTestTextResizeHandle(point) || hitTestImageResizeHandle(point))?.direction);
+      const resizeHandle = hitTestTextResizeHandle(point) || hitTestImageResizeHandle(point);
+      const canMove = Boolean(hitTestText(point) || hitTestLayer(point));
+      setResizeCursor(resizeHandle?.direction, canMove);
       return;
     }
     if ((dragState.type === 'text' || dragState.type === 'layer') && !dragState.historySaved
