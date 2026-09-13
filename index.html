@@ -49,14 +49,14 @@
       <section class="control-section">
         <div class="section-title text-section-title">
           <div><span class="step coral">02</span><h2>문구</h2></div>
-          <button class="mini-add-button" id="addTextButton" type="button">＋ 문구 추가</button>
         </div>
+        <button class="text-tool-button" id="textToolButton" type="button" aria-pressed="false">
+          <span aria-hidden="true">A</span>
+          <strong>텍스트 도구</strong>
+          <small>선택 후 카드 위를 클릭하세요</small>
+        </button>
         <fieldset class="text-controls" id="textControls">
           <legend class="sr-only">선택한 문구 편집</legend>
-        <label class="field text-field">한글 문구
-          <textarea id="textInput" rows="3" maxlength="120">오늘도\n내가 해냄</textarea>
-          <span class="char-count"><b id="charCount">10</b>/120</span>
-        </label>
         <div class="two-col compact">
           <label class="field">글자 크기
             <div class="unit-input"><input id="fontSize" type="number" min="16" max="180" value="68"><span>px</span></div>
@@ -137,6 +137,17 @@
 
         <div class="canvas-wrap" id="canvasWrap">
           <canvas id="previewCanvas" width="1080" height="1080" tabindex="0" aria-label="편집 결과 미리보기. 이미지나 문구를 클릭해 선택하고 문구 핸들을 드래그해 크기를 조절할 수 있습니다."></canvas>
+          <div class="canvas-text-editor-box" id="canvasTextEditorBox" hidden>
+            <textarea class="canvas-text-editor" id="canvasTextEditor" maxlength="120" aria-label="카드 위 문구 입력"></textarea>
+            <span class="editor-resize-handle nw" data-editor-resize="nw" aria-hidden="true"></span>
+            <span class="editor-resize-handle n" data-editor-resize="n" aria-hidden="true"></span>
+            <span class="editor-resize-handle ne" data-editor-resize="ne" aria-hidden="true"></span>
+            <span class="editor-resize-handle e" data-editor-resize="e" aria-hidden="true"></span>
+            <span class="editor-resize-handle se" data-editor-resize="se" aria-hidden="true"></span>
+            <span class="editor-resize-handle s" data-editor-resize="s" aria-hidden="true"></span>
+            <span class="editor-resize-handle sw" data-editor-resize="sw" aria-hidden="true"></span>
+            <span class="editor-resize-handle w" data-editor-resize="w" aria-hidden="true"></span>
+          </div>
           <div class="drag-tip" id="dragTip">문구를 드래그해 옮겨보세요</div>
         </div>
 

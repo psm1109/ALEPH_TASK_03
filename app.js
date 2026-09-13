@@ -36,7 +36,11 @@
   let templates = [];
   let selectedLayerId = null;
   let selectedTextId = DEFAULT_TEXT.id;
-  let selectedElement = 'text';
+  let selectedElement = null;
+  let editingTextId = null;
+  let textToolActive = false;
+  let inlineEditHistorySaved = false;
+  let inlineResizeState = null;
   let activeTab = 'edit';
   let dragState = null;
   let toastTimer;
@@ -224,8 +228,6 @@
   function syncControls() {
     const text = selectedText();
     $('#textControls').disabled = !text;
-    $('#textInput').value = text?.text || '';
-    $('#charCount').textContent = text?.text.length || 0;
     $('#fontSize').value = text?.fontSize || DEFAULT_TEXT.fontSize;
     $('#textColor').value = text?.textColor || DEFAULT_TEXT.textColor;
     $('#colorValue').textContent = (text?.textColor || DEFAULT_TEXT.textColor).toUpperCase();
@@ -233,6 +235,7 @@
     $('#textY').value = text?.y || DEFAULT_TEXT.y;
     $$('.ratio-button').forEach(button => button.classList.toggle('active', button.dataset.ratio === state.ratio));
     $$('.align-button').forEach(button => button.classList.toggle('active', button.dataset.align === text?.textAlign));
+    $('#textToolButton').setAttribute('aria-pressed', String(textToolActive));
     syncBackgroundOptions();
     syncLayerControls();
   }
@@ -255,6 +258,7 @@
   function switchTab(tab) {
     activeTab = tab;
     const isEdit = tab === 'edit';
+    if (!isEdit) textToolActive = false;
     if (isEdit && !selectedTextId && state.texts.length) selectedTextId = state.texts.at(-1).id;
     if (!isEdit && !selectedLayerId && state.images.length) selectedLayerId = state.images.at(-1).id;
     selectedElement = isEdit && selectedText() ? 'text' : (!isEdit && selectedLayer() ? 'image' : null);
@@ -441,7 +445,7 @@
   }
 
   function drawTextSelection(textLayer) {
-    if (!textLayer?.text) return;
+    if (!textLayer) return;
     const layout = textLayout(textLayer);
     ctx.save();
     drawSelectionBox(layout.left, layout.top, layout.boxWidth, layout.height, textResizeHandles(layout));
@@ -463,6 +467,89 @@
     });
   }
 
+  function syncCanvasTextEditor() {
+    const editorBox = $('#canvasTextEditorBox');
+    const editor = $('#canvasTextEditor');
+    const text = state.texts.find(layer => layer.id === editingTextId);
+    if (!text) { editorBox.hidden = true; return; }
+    const layout = textLayout(text);
+    const canvasRect = canvas.getBoundingClientRect();
+    const wrapRect = $('#canvasWrap').getBoundingClientRect();
+    if (!canvasRect.width || !canvasRect.height) return;
+    const scaleX = canvasRect.width / canvas.width;
+    const scaleY = canvasRect.height / canvas.height;
+    const horizontalPadding = layout.padding * scaleX;
+    const lineHeight = layout.lineHeight * scaleY;
+    const textHeight = Math.max(lineHeight, layout.lines.length * lineHeight);
+    const editorHeight = layout.height * scaleY;
+    const verticalPadding = Math.max(layout.padding * scaleY, (editorHeight - textHeight) / 2);
+    Object.assign(editorBox.style, {
+      left: `${canvasRect.left - wrapRect.left + layout.left * scaleX}px`,
+      top: `${canvasRect.top - wrapRect.top + layout.top * scaleY}px`,
+      width: `${layout.boxWidth * scaleX}px`,
+      height: `${editorHeight}px`
+    });
+    Object.assign(editor.style, {
+      padding: `${verticalPadding}px ${horizontalPadding}px`,
+      fontSize: `${layout.responsiveSize * scaleX}px`,
+      lineHeight: `${lineHeight}px`,
+      textAlign: text.textAlign,
+      color: 'transparent',
+      caretColor: text.textColor
+    });
+    editorBox.hidden = false;
+  }
+
+  function startInlineTextEditing(id, historyAlreadySaved = false) {
+    const text = state.texts.find(layer => layer.id === id);
+    if (!text) return;
+    editingTextId = id; selectedTextId = id; selectedElement = 'text'; textToolActive = false;
+    inlineEditHistorySaved = historyAlreadySaved;
+    const editor = $('#canvasTextEditor');
+    editor.value = text.text;
+    syncControls(); renderLayers(); renderCanvas();
+    requestAnimationFrame(() => {
+      editor.focus({ preventScroll: true });
+      editor.setSelectionRange(editor.value.length, editor.value.length);
+    });
+  }
+
+  function finishInlineTextEditing() {
+    if (!editingTextId) return;
+    const id = editingTextId;
+    editingTextId = null;
+    inlineResizeState = null;
+    $('#canvasTextEditorBox').hidden = true;
+    const text = state.texts.find(layer => layer.id === id);
+    if (text && !text.text) {
+      selectedTextId = id;
+      deleteSelectedText(false);
+    }
+    selectedElement = null;
+    syncControls(); renderLayers(); renderCanvas();
+  }
+
+  function activateTextTool() {
+    if (editingTextId) $('#canvasTextEditor').blur();
+    textToolActive = !textToolActive;
+    selectedElement = null;
+    syncControls(); renderLayers(); renderCanvas(); setResizeCursor();
+  }
+
+  function createTextAt(point) {
+    recordHistory();
+    const number = state.texts.length + 1;
+    const x = Math.max(5, Math.min(80, point.x / canvas.width * 100));
+    const boxHeight = DEFAULT_TEXT.boxHeight;
+    const text = {
+      ...DEFAULT_TEXT, id: makeId(), name: `문구 ${number}`, text: '', textAlign: 'left', x,
+      y: Math.max(5, Math.min(95, point.y / canvas.height * 100 + boxHeight / 2)),
+      boxWidth: Math.max(15, Math.min(40, 95 - x)), boxHeight
+    };
+    state.texts.push(text);
+    startInlineTextEditing(text.id, true);
+  }
+
   function renderCanvas(showGuides = true) {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     drawBackground();
@@ -470,6 +557,7 @@
     state.texts.forEach(drawTextLayer);
     if (showGuides && selectedElement === 'image') drawLayerSelection(selectedLayer());
     if (showGuides && selectedElement === 'text') drawTextSelection(selectedText());
+    syncCanvasTextEditor();
   }
 
   function renderBackgroundOptions() {
@@ -631,20 +719,11 @@
     syncLayerControls();
   }
 
-  function addTextLayer() {
-    recordHistory();
-    const number = state.texts.length + 1;
-    const text = { ...DEFAULT_TEXT, id: makeId(), name: `문구 ${number}`, text: '', y: Math.min(90, 50 + number * 4) };
-    state.texts.push(text);
-    selectedTextId = text.id; selectedElement = 'text';
-    switchTab('edit'); syncControls(); renderLayers(); renderCanvas();
-    $('#textInput').focus();
-  }
-
-  function selectText(id) {
+  function selectText(id, editInline = true) {
     if (!state.texts.some(layer => layer.id === id)) return;
     selectedTextId = id; selectedElement = 'text';
     switchTab('edit'); syncControls(); renderLayers(); renderCanvas();
+    if (editInline) requestAnimationFrame(() => startInlineTextEditing(id));
   }
 
   function moveText(id, direction) {
@@ -822,6 +901,7 @@
     state = { ...DEFAULT_STATE, ...item, images: item.images.map(layer => ({ ...layer })), texts: item.texts.map(layer => ({ ...layer })) };
     selectedLayerId = state.images.at(-1)?.id || null;
     selectedTextId = state.texts.at(-1)?.id || null;
+    selectedElement = null; editingTextId = null; textToolActive = false;
     $('#templateName').value = item.name;
     syncControls(); renderLayers(); setCanvasRatio();
     setMessage($('#templateMessage'), `“${item.name}” 템플릿을 불러왔습니다.`, 'success');
@@ -892,8 +972,9 @@
   function resetWork() {
     recordHistory();
     state = { ...DEFAULT_STATE, images: [], texts: [{ ...DEFAULT_TEXT }] }; imageCache = new Map(); selectedLayerId = null; selectedTextId = DEFAULT_TEXT.id;
+    selectedElement = null; editingTextId = null; textToolActive = false; inlineResizeState = null; $('#canvasTextEditorBox').hidden = true;
     $('#templateName').value = ''; setMessage($('#fileMessage'), ''); setMessage($('#templateMessage'), '');
-    syncControls(); renderLayers(); setCanvasRatio(); switchTab('edit'); showToast('새 작업을 시작합니다.');
+    syncControls(); renderLayers(); setCanvasRatio(); switchTab('edit'); selectedElement = null; renderCanvas(); showToast('새 작업을 시작합니다.');
   }
 
   function pointerPosition(event) {
@@ -949,11 +1030,65 @@
 
   function setResizeCursor(direction = '') {
     const cursors = { n: 'ns-resize', s: 'ns-resize', e: 'ew-resize', w: 'ew-resize', ne: 'nesw-resize', sw: 'nesw-resize', nw: 'nwse-resize', se: 'nwse-resize' };
-    canvas.style.cursor = cursors[direction] || '';
+    canvas.style.cursor = cursors[direction] || (textToolActive ? 'text' : '');
+  }
+
+  function resizeTextBox(text, direction, bounds, point) {
+    const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
+    const minWidth = canvas.width * .15;
+    const maxWidth = canvas.width * .9;
+    const maxHeight = canvas.height * .95;
+    let { left, right, top, bottom } = bounds;
+    if (direction.includes('w')) left = clamp(point.x, right - maxWidth, right - minWidth);
+    if (direction.includes('e')) right = clamp(point.x, left + minWidth, left + maxWidth);
+    if (direction.includes('n')) top = clamp(point.y, bottom - maxHeight, bottom - bounds.minHeight);
+    if (direction.includes('s')) bottom = clamp(point.y, top + bounds.minHeight, top + maxHeight);
+    text.boxWidth = (right - left) / canvas.width * 100;
+    text.boxHeight = (bottom - top) / canvas.height * 100;
+    text.y = clamp((top + bottom) / 2 / canvas.height * 100, 5, 95);
+    const anchorX = text.textAlign === 'left' ? left : text.textAlign === 'right' ? right : (left + right) / 2;
+    text.x = clamp(anchorX / canvas.width * 100, 5, 95);
+  }
+
+  function beginInlineTextResize(event) {
+    const handle = event.target.closest('[data-editor-resize]');
+    const text = state.texts.find(layer => layer.id === editingTextId);
+    if (!handle || !text) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const layout = textLayout(text);
+    if (!inlineEditHistorySaved) { recordHistory(); inlineEditHistorySaved = true; }
+    inlineResizeState = {
+      pointerId: event.pointerId,
+      direction: handle.dataset.editorResize,
+      left: layout.left,
+      right: layout.left + layout.boxWidth,
+      top: layout.top,
+      bottom: layout.top + layout.height,
+      minHeight: Math.min(canvas.height * .95, layout.contentHeight)
+    };
+    handle.setPointerCapture?.(event.pointerId);
+  }
+
+  function moveInlineTextResize(event) {
+    if (!inlineResizeState || event.pointerId !== inlineResizeState.pointerId) return;
+    event.preventDefault();
+    const text = state.texts.find(layer => layer.id === editingTextId);
+    if (!text) return;
+    resizeTextBox(text, inlineResizeState.direction, inlineResizeState, pointerPosition(event));
+    syncControls(); renderLayers(); renderCanvas();
+  }
+
+  function endInlineTextResize(event) {
+    if (!inlineResizeState || event.pointerId !== inlineResizeState.pointerId) return;
+    event.preventDefault();
+    inlineResizeState = null;
+    $('#canvasTextEditor').focus({ preventScroll: true });
   }
 
   function beginCanvasDrag(event) {
     const point = pointerPosition(event);
+    if (textToolActive) { createTextAt(point); return; }
     const beforeMove = snapshot();
     const textResizeHandle = hitTestTextResizeHandle(point);
     const imageResizeHandle = hitTestImageResizeHandle(point);
@@ -978,7 +1113,7 @@
     } else {
       const textHit = hitTestText(point);
       if (textHit) {
-        selectText(textHit.id);
+        selectText(textHit.id, false);
         dragState = { type: 'text', startX: point.x, startY: point.y, textX: textHit.x, textY: textHit.y, beforeMove, historySaved: false };
       } else {
         const imageHit = hitTestLayer(point);
@@ -1000,26 +1135,15 @@
       setResizeCursor((hitTestTextResizeHandle(point) || hitTestImageResizeHandle(point))?.direction);
       return;
     }
+    if ((dragState.type === 'text' || dragState.type === 'layer') && !dragState.historySaved
+      && Math.hypot(point.x - dragState.startX, point.y - dragState.startY) < canvas.width / 270) return;
     if (!dragState.historySaved) {
       recordHistory(dragState.beforeMove);
       dragState.historySaved = true;
     }
     if (dragState.type === 'text-resize') {
       const text = selectedText(); if (!text) return;
-      const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
-      const minWidth = canvas.width * .15;
-      const maxWidth = canvas.width * .9;
-      const maxHeight = canvas.height * .95;
-      let { left, right, top, bottom } = dragState;
-      if (dragState.direction.includes('w')) left = clamp(point.x, right - maxWidth, right - minWidth);
-      if (dragState.direction.includes('e')) right = clamp(point.x, left + minWidth, left + maxWidth);
-      if (dragState.direction.includes('n')) top = clamp(point.y, bottom - maxHeight, bottom - dragState.minHeight);
-      if (dragState.direction.includes('s')) bottom = clamp(point.y, top + dragState.minHeight, top + maxHeight);
-      text.boxWidth = (right - left) / canvas.width * 100;
-      text.boxHeight = (bottom - top) / canvas.height * 100;
-      text.y = clamp((top + bottom) / 2 / canvas.height * 100, 5, 95);
-      const anchorX = text.textAlign === 'left' ? left : text.textAlign === 'right' ? right : (left + right) / 2;
-      text.x = clamp(anchorX / canvas.width * 100, 5, 95);
+      resizeTextBox(text, dragState.direction, dragState, point);
     } else if (dragState.type === 'image-resize') {
       const layer = selectedLayer(); if (!layer) return;
       const dx = point.x - dragState.centerX;
@@ -1054,8 +1178,10 @@
   }
 
   function endCanvasDrag() {
-    if (dragState) renderLayers();
+    const completedDrag = dragState;
+    if (completedDrag) renderLayers();
     dragState = null; canvas.classList.remove('dragging'); setResizeCursor();
+    if (completedDrag?.type === 'text' && !completedDrag.historySaved) startInlineTextEditing(selectedTextId);
   }
 
   function handleEditorShortcut(event) {
@@ -1086,8 +1212,19 @@
     upload.addEventListener('drop', event => handleImageFiles(event.dataTransfer.files));
     $('#editTabButton').addEventListener('click', () => switchTab('edit'));
     $('#layersTabButton').addEventListener('click', () => switchTab('layers'));
-    $('#addTextButton').addEventListener('click', addTextLayer);
-    $('#textInput').addEventListener('input', event => { const text = selectedText(); if (!text) return; recordHistory(); text.text = event.target.value; $('#charCount').textContent = text.text.length; renderLayers(); renderCanvas(); });
+    $('#textToolButton').addEventListener('click', activateTextTool);
+    $('#canvasTextEditor').addEventListener('input', event => {
+      const text = state.texts.find(layer => layer.id === editingTextId); if (!text) return;
+      if (!inlineEditHistorySaved) { recordHistory(); inlineEditHistorySaved = true; }
+      text.text = event.target.value; renderLayers(); renderCanvas();
+    });
+    $('#canvasTextEditor').addEventListener('blur', finishInlineTextEditing);
+    $('#canvasTextEditor').addEventListener('keydown', event => { if (event.key === 'Escape') { event.preventDefault(); event.currentTarget.blur(); } });
+    const editorBox = $('#canvasTextEditorBox');
+    editorBox.addEventListener('pointerdown', beginInlineTextResize);
+    editorBox.addEventListener('pointermove', moveInlineTextResize);
+    editorBox.addEventListener('pointerup', endInlineTextResize);
+    editorBox.addEventListener('pointercancel', endInlineTextResize);
     $('#fontSize').addEventListener('input', event => updateSelectedText('fontSize', Math.max(16, Math.min(180, Number(event.target.value) || 16))));
     $('#textColor').addEventListener('input', event => updateSelectedText('textColor', event.target.value));
     [['textX', 'x'], ['textY', 'y']].forEach(([id, key]) => $(`#${id}`).addEventListener('input', event => updateSelectedText(key, Number(event.target.value))));
@@ -1140,9 +1277,10 @@
     canvas.addEventListener('pointercancel', endCanvasDrag);
     document.addEventListener('keydown', handleEditorShortcut);
     document.addEventListener('pointerdown', event => {
-      if (event.target === canvas || !selectedElement) return;
+      if (event.target === canvas || event.target.closest?.('#canvasTextEditorBox') || !selectedElement) return;
       selectedElement = null; setResizeCursor(); renderCanvas();
     });
+    window.addEventListener('resize', syncCanvasTextEditor);
   }
 
   function registerWebMcp() {
