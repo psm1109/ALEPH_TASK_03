@@ -163,15 +163,53 @@
       texts = [legacyText];
     }
 
+    const keys = [...images.map(layer => 'image:' + layer.id), ...texts.map(layer => 'text:' + layer.id)];
+    if (item.layerOrder !== undefined && (!Array.isArray(item.layerOrder)
+      || item.layerOrder.length !== keys.length || new Set(item.layerOrder).size !== keys.length
+      || item.layerOrder.some(key => !keys.includes(key)))) return null;
+    const layerOrder = item.layerOrder ? [...item.layerOrder] : keys;
+    const thumbnail = typeof item.thumbnail === 'string' && /^data:image\/png;base64,/.test(item.thumbnail) ? item.thumbnail : null;
     const backgroundId = BACKGROUNDS.some(background => background.id === item.backgroundId) ? item.backgroundId : DEFAULT_STATE.backgroundId;
     return {
       id: item.id, name: item.name, ratio: item.ratio, backgroundId,
-      createdAt: item.createdAt, images, texts
+      createdAt: item.createdAt, images, texts, layerOrder, thumbnail
     };
   }
 
   function currentTemplate(name, id = makeId(), createdAt = new Date().toISOString()) {
-    return { id, name: name.trim(), createdAt, ...state, images: state.images.map(layer => ({ ...layer })), texts: state.texts.map(layer => ({ ...layer })) };
+    orderedElements();
+    renderCanvas(false);
+    const preview = document.createElement('canvas');
+    preview.width = 160; preview.height = Math.round(160 * canvas.height / canvas.width);
+    preview.getContext('2d').drawImage(canvas, 0, 0, preview.width, preview.height);
+    const thumbnail = preview.toDataURL('image/png');
+    renderCanvas();
+    return { ...state, id, name: name.trim(), createdAt, thumbnail, layerOrder: [...state.layerOrder], images: state.images.map(layer => ({ ...layer })), texts: state.texts.map(layer => ({ ...layer })) };
+  }
+
+  // Back-to-front order is shared by images and text.
+  function orderedElements(source = state) {
+    const all = [...source.images.map(layer => ({ type: 'image', layer })),
+      ...source.texts.map(layer => ({ type: 'text', layer }))];
+    const key = item => item.type + ':' + item.layer.id;
+    const order = source.layerOrder || [];
+    const byKey = new Map(all.map(item => [key(item), item]));
+    const result = order.filter(id => byKey.has(id)).map(id => byKey.get(id));
+    const known = new Set(order);
+    result.push(...all.filter(item => !known.has(key(item))));
+    source.layerOrder = result.map(key);
+    return result;
+  }
+
+  function moveElement(id, type, direction) {
+    orderedElements();
+    const key = type + ':' + id;
+    const index = state.layerOrder.indexOf(key);
+    const target = index + (direction === 'up' ? 1 : -1);
+    if (index < 0 || target < 0 || target >= state.layerOrder.length) return;
+    recordHistory();
+    [state.layerOrder[index], state.layerOrder[target]] = [state.layerOrder[target], state.layerOrder[index]];
+    if (type === 'text') selectText(id); else selectLayer(id);
   }
 
   function selectedLayer() {
@@ -183,7 +221,7 @@
   }
 
   function cloneState(source = state) {
-    return { ...source, images: source.images.map(layer => ({ ...layer })), texts: source.texts.map(layer => ({ ...layer })) };
+    return { ...source, layerOrder: [...(source.layerOrder || [])], images: source.images.map(layer => ({ ...layer })), texts: source.texts.map(layer => ({ ...layer })) };
   }
 
   function snapshot() {
@@ -557,8 +595,7 @@
     $('#inspectorEmpty').hidden = hasText || hasImage;
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     drawBackground();
-    state.images.forEach(drawLayer);
-    state.texts.forEach(drawTextLayer);
+    orderedElements().forEach(({ type, layer }) => type === 'image' ? drawLayer(layer) : drawTextLayer(layer));
     if (showGuides && selectedElement === 'image') drawLayerSelection(selectedLayer());
     if (showGuides && selectedElement === 'text') drawTextSelection(selectedText());
     syncCanvasTextEditor();
@@ -698,34 +735,21 @@
       list.innerHTML = '<div class="layer-empty">추가된 항목이 없어요.<br>이미지나 문구를 추가해주세요.</div>';
       selectedLayerId = null; selectedTextId = null; syncLayerControls(); return;
     }
-    const textItems = [...state.texts].reverse().map(layer => {
-      const index = state.texts.findIndex(item => item.id === layer.id);
-      const label = layer.text.split('\n')[0].trim() || layer.name;
-      return `<article class="layer-item ${selectedElement === 'text' && layer.id === selectedTextId ? 'active' : ''}" data-layer-id="${escapeHtml(layer.id)}" data-element-type="text">
-        <button class="layer-select" type="button" data-layer-action="select" aria-pressed="${selectedElement === 'text' && layer.id === selectedTextId}">
-          <span class="layer-thumb text-thumb" aria-hidden="true">T</span>
-          <span class="layer-copy"><strong>${escapeHtml(label)}</strong><small>문구 · ${Math.round(layer.fontSize)}px</small></span>
+    const items = orderedElements().reverse();
+    list.innerHTML = items.map(({ type, layer }, index) => {
+      const isText = type === 'text';
+      const label = isText ? (layer.text.split('\n')[0].trim() || layer.name) : layer.name;
+      const active = selectedElement === type && layer.id === (isText ? selectedTextId : selectedLayerId);
+      return `<article draggable="true" class="layer-item ${active ? 'active' : ''}" data-layer-id="${escapeHtml(layer.id)}" data-element-type="${type}">
+        <button class="layer-select" type="button" data-layer-action="select" aria-pressed="${active}">
+          ${isText ? '<span class="layer-thumb text-thumb" aria-hidden="true">T</span>' : `<img draggable="false" class="layer-thumb" src="${layer.dataUrl}" alt="">`}
+          <span class="layer-copy"><strong>${escapeHtml(label)}</strong><small>${isText ? '문구' : '이미지'} · 드래그로 순서 변경</small></span>
         </button>
         <span class="layer-order">
-          <button type="button" data-layer-action="up" aria-label="${escapeHtml(label)} 앞으로 가져오기" ${index === state.texts.length - 1 ? 'disabled' : ''}>↑</button>
-          <button type="button" data-layer-action="down" aria-label="${escapeHtml(label)} 뒤로 보내기" ${index === 0 ? 'disabled' : ''}>↓</button>
-        </span>
-      </article>`;
+          <button type="button" data-layer-action="up" aria-label="앞으로 가져오기" ${index === 0 ? 'disabled' : ''}>↑</button>
+          <button type="button" data-layer-action="down" aria-label="뒤로 보내기" ${index === items.length - 1 ? 'disabled' : ''}>↓</button>
+        </span></article>`;
     }).join('');
-    const imageItems = [...state.images].reverse().map(layer => {
-      const index = state.images.findIndex(item => item.id === layer.id);
-      return `<article class="layer-item ${selectedElement === 'image' && layer.id === selectedLayerId ? 'active' : ''}" data-layer-id="${escapeHtml(layer.id)}" data-element-type="image">
-        <button class="layer-select" type="button" data-layer-action="select" aria-pressed="${selectedElement === 'image' && layer.id === selectedLayerId}">
-          <img class="layer-thumb" src="${layer.dataUrl}" alt="">
-          <span class="layer-copy"><strong>${escapeHtml(layer.name)}</strong><small>크기 ${Math.round(layer.scale)}% · 회전 ${Math.round(layer.rotation)}°</small></span>
-        </button>
-        <span class="layer-order">
-          <button type="button" data-layer-action="up" aria-label="${escapeHtml(layer.name)} 앞으로 가져오기" ${index === state.images.length - 1 ? 'disabled' : ''}>↑</button>
-          <button type="button" data-layer-action="down" aria-label="${escapeHtml(layer.name)} 뒤로 보내기" ${index === 0 ? 'disabled' : ''}>↓</button>
-        </span>
-      </article>`;
-    }).join('');
-    list.innerHTML = textItems + imageItems;
     syncLayerControls();
   }
 
@@ -736,12 +760,7 @@
   }
 
   function moveText(id, direction) {
-    const index = state.texts.findIndex(layer => layer.id === id);
-    const target = direction === 'up' ? index + 1 : index - 1;
-    if (index < 0 || target < 0 || target >= state.texts.length) return;
-    recordHistory();
-    [state.texts[index], state.texts[target]] = [state.texts[target], state.texts[index]];
-    selectedTextId = id; selectedElement = 'text'; renderLayers(); renderCanvas();
+    moveElement(id, 'text', direction);
   }
 
   function selectLayer(id) {
@@ -753,12 +772,7 @@
   }
 
   function moveLayer(id, direction) {
-    const index = state.images.findIndex(layer => layer.id === id);
-    const target = direction === 'up' ? index + 1 : index - 1;
-    if (index < 0 || target < 0 || target >= state.images.length) return;
-    recordHistory();
-    [state.images[index], state.images[target]] = [state.images[target], state.images[index]];
-    selectedLayerId = id; renderLayers(); renderCanvas();
+    moveElement(id, 'image', direction);
   }
 
   function deleteSelectedLayer(confirmDelete = true, saveHistory = true) {
@@ -895,6 +909,7 @@
       list.innerHTML = '<div class="template-empty">아직 저장된 템플릿이 없어요.<br>현재 작업을 첫 템플릿으로 저장해보세요.</div>'; return;
     }
     list.innerHTML = templates.map(item => `<article class="template-item" data-id="${escapeHtml(item.id)}">
+      ${item.thumbnail ? `<img class="template-thumbnail" src="${escapeHtml(item.thumbnail)}" alt="${escapeHtml(item.name)} 미리보기">` : ''}
       <div><strong>${escapeHtml(item.name)}</strong><small>${item.ratio} · 이미지 ${item.images.length}개 · 문구 ${item.texts.length}개</small></div>
       <div class="template-actions"><button type="button" data-action="load">불러오기</button><button type="button" data-action="update" title="현재 작업으로 템플릿 업데이트">업데이트</button><button type="button" class="delete" data-action="delete" aria-label="${escapeHtml(item.name)} 삭제"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M3 6h18M9 6V3h6v3M6 6l1 15h10l1-15M10 10v7M14 10v7"/></svg></button></div>
     </article>`).join('');
@@ -1123,13 +1138,24 @@
         rotation: layer.rotation * Math.PI / 180, left: -width / 2, right: width / 2, top: -height / 2, bottom: height / 2
       };
     } else {
-      const textHit = hitTestText(point);
+      const topHit = orderedElements().reverse().find(({ type, layer }) => {
+        if (type === 'text') {
+          if (!layer.text) return false;
+          const box = textLayout(layer);
+          return point.x >= box.left && point.x <= box.left + box.boxWidth && point.y >= box.top && point.y <= box.top + box.height;
+        }
+        const image = imageCache.get(layer.id);
+        if (!image) return false;
+        const size = layerDimensions(layer, image), local = layerLocalPoint(point, layer);
+        return Math.abs(local.x) <= size.width / 2 && Math.abs(local.y) <= size.height / 2;
+      });
+      const textHit = topHit?.type === 'text' ? topHit.layer : null;
       if (textHit) {
         const editOnClick = selectedElement === 'text' && selectedTextId === textHit.id;
         selectText(textHit.id);
         dragState = { type: 'text', startX: point.x, startY: point.y, textX: textHit.x, textY: textHit.y, beforeMove, historySaved: false, editOnClick };
       } else {
-        const imageHit = hitTestLayer(point);
+        const imageHit = topHit?.type === 'image' ? topHit.layer : null;
         if (!imageHit) {
           selectedElement = null; renderLayers(); renderCanvas(); setResizeCursor(); return;
         }
@@ -1256,6 +1282,45 @@
       const option = event.target.closest('[data-background-id]');
       if (option) selectBackground(option.dataset.backgroundId);
     });
+    let draggedKey = null;
+    const layerList = $('#layerList');
+    const clearDrop = () => layerList.querySelectorAll('.drop-before, .drop-after').forEach(el => el.classList.remove('drop-before', 'drop-after'));
+    layerList.addEventListener('dragstart', event => {
+      const row = event.target.closest('.layer-item');
+      if (!row) return;
+      draggedKey = row.dataset.elementType + ':' + row.dataset.layerId;
+      event.dataTransfer.effectAllowed = 'move';
+      event.dataTransfer.setData('text/plain', draggedKey);
+      row.classList.add('sorting');
+    });
+    layerList.addEventListener('dragover', event => {
+      if (!draggedKey) return;
+      event.preventDefault();
+      event.dataTransfer.dropEffect = 'move';
+      clearDrop();
+      const row = event.target.closest('.layer-item');
+      if (row) row.classList.add(event.clientY < row.getBoundingClientRect().top + row.offsetHeight / 2 ? 'drop-before' : 'drop-after');
+    });
+    layerList.addEventListener('drop', event => {
+      if (!draggedKey) return;
+      event.preventDefault();
+      const row = event.target.closest('.layer-item');
+      if (row) {
+        orderedElements();
+        const display = [...state.layerOrder].reverse().filter(key => key !== draggedKey);
+        const target = row.dataset.elementType + ':' + row.dataset.layerId;
+        if (target !== draggedKey) {
+          const index = display.indexOf(target) + (row.classList.contains('drop-after') ? 1 : 0);
+          recordHistory();
+          display.splice(index, 0, draggedKey);
+          state.layerOrder = display.reverse();
+          if (draggedKey.startsWith('text:')) selectText(draggedKey.slice(5));
+          else selectLayer(draggedKey.slice(6));
+        }
+      }
+      draggedKey = null; clearDrop(); renderLayers(); renderCanvas();
+    });
+    layerList.addEventListener('dragend', () => { draggedKey = null; clearDrop(); renderLayers(); });
     $('#layerList').addEventListener('click', event => {
       const button = event.target.closest('[data-layer-action]'); if (!button) return;
       const item = button.closest('.layer-item');
