@@ -10,9 +10,23 @@
     '4:5': { width: 1080, height: 1350 },
     '9:16': { width: 1080, height: 1920 }
   };
+  const BACKGROUNDS = [
+    { id: 'aurora', name: '오로라', mood: '선명한 그라데이션', preview: 'linear-gradient(135deg,#5864ff 0%,#923cff 52%,#ff745f 100%)' },
+    { id: 'sunrise', name: '선라이즈', mood: '따뜻하고 밝게', preview: 'linear-gradient(135deg,#ff6559,#ffb83f 58%,#fff0b7)' },
+    { id: 'ocean', name: '딥 오션', mood: '차분하고 깊게', preview: 'linear-gradient(135deg,#071946,#0b69a7 55%,#35d0ba)' },
+    { id: 'mint', name: '프레시 민트', mood: '산뜻하고 경쾌하게', preview: 'linear-gradient(135deg,#c8f135,#71dbb8 55%,#ecffe0)' },
+    { id: 'ink', name: '나이트 잉크', mood: '묵직한 다크 톤', preview: 'linear-gradient(135deg,#090b10,#252b38 60%,#4c5364)' },
+    { id: 'paper', name: '크림 페이퍼', mood: '부드러운 종이 톤', preview: 'linear-gradient(135deg,#eee5d5,#fffdf6 60%,#dfd0b7)' },
+    { id: 'berry', name: '베리 팝', mood: '강렬한 핑크 톤', preview: 'linear-gradient(135deg,#35004f,#9c2cff 50%,#ff4f8b)' },
+    { id: 'citrus', name: '시트러스', mood: '톡 쏘는 컬러', preview: 'linear-gradient(135deg,#ff6a00,#ffc800 58%,#c8f135)' },
+    { id: 'cobalt', name: '코발트', mood: '선명한 블루 톤', preview: 'linear-gradient(135deg,#161c97,#5563ff 55%,#91b6ff)' },
+    { id: 'mono', name: '모노크롬', mood: '깔끔한 흑백 톤', preview: 'linear-gradient(135deg,#050505,#777 55%,#e8e8e8)' },
+    { id: 'grid', name: '에디터 그리드', mood: '정돈된 그래픽', preview: 'linear-gradient(#deddd7 1px,transparent 1px),linear-gradient(90deg,#deddd7 1px,#f8f7f2 1px)' },
+    { id: 'dots', name: '코랄 도트', mood: '장난스럽고 가볍게', preview: 'radial-gradient(circle,#ff745f 18%,transparent 20%)' }
+  ];
   const DEFAULT_STATE = {
     ratio: '1:1', text: '오늘도\n내가 해냄', fontSize: 68, textColor: '#ffffff',
-    textX: 50, textY: 77, textAlign: 'center', images: []
+    textX: 50, textY: 77, textAlign: 'center', backgroundId: 'aurora', images: []
   };
 
   let state = { ...DEFAULT_STATE, images: [] };
@@ -116,10 +130,11 @@
       }];
     } else { return null; }
 
+    const backgroundId = BACKGROUNDS.some(background => background.id === item.backgroundId) ? item.backgroundId : DEFAULT_STATE.backgroundId;
     return {
       id: item.id, name: item.name, ratio: item.ratio, text: item.text,
       fontSize: item.fontSize, textColor: item.textColor, textX: item.textX,
-      textY: item.textY, textAlign: item.textAlign, createdAt: item.createdAt, images
+      textY: item.textY, textAlign: item.textAlign, backgroundId, createdAt: item.createdAt, images
     };
   }
 
@@ -184,6 +199,7 @@
     $('#textY').value = state.textY;
     $$('.ratio-button').forEach(button => button.classList.toggle('active', button.dataset.ratio === state.ratio));
     $$('.align-button').forEach(button => button.classList.toggle('active', button.dataset.align === state.textAlign));
+    syncBackgroundOptions();
     syncLayerControls();
   }
 
@@ -224,23 +240,48 @@
     canvas.height = size.height;
     $('#canvasSize').textContent = `${size.width} × ${size.height} px`;
     renderCanvas();
+    positionBackgroundButton();
   }
 
-  function drawPlaceholder() {
-    const gradient = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
-    gradient.addColorStop(0, '#5864ff');
-    gradient.addColorStop(.52, '#923cff');
-    gradient.addColorStop(1, '#ff745f');
-    ctx.fillStyle = gradient;
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-    ctx.globalAlpha = .15;
-    ctx.fillStyle = '#ffffff';
-    const gap = canvas.width / 7;
-    for (let x = -canvas.height; x < canvas.width + canvas.height; x += gap) {
-      ctx.save(); ctx.translate(x, 0); ctx.rotate(-.35);
-      ctx.fillRect(0, -200, gap * .35, canvas.height * 1.5); ctx.restore();
+  function drawBackground() {
+    const palettes = {
+      aurora: ['#5864ff', '#923cff', '#ff745f'], sunrise: ['#ff6559', '#ffb83f', '#fff0b7'],
+      ocean: ['#071946', '#0b69a7', '#35d0ba'], mint: ['#c8f135', '#71dbb8', '#ecffe0'],
+      ink: ['#090b10', '#252b38', '#4c5364'], paper: ['#eee5d5', '#fffdf6', '#dfd0b7'],
+      berry: ['#35004f', '#9c2cff', '#ff4f8b'], citrus: ['#ff6a00', '#ffc800', '#c8f135'],
+      cobalt: ['#161c97', '#5563ff', '#91b6ff'], mono: ['#050505', '#777777', '#e8e8e8']
+    };
+    const palette = palettes[state.backgroundId];
+    if (palette) {
+      const gradient = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
+      gradient.addColorStop(0, palette[0]); gradient.addColorStop(.55, palette[1]); gradient.addColorStop(1, palette[2]);
+      ctx.fillStyle = gradient; ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.globalAlpha = state.backgroundId === 'paper' ? .08 : .13;
+      ctx.fillStyle = '#ffffff';
+      const gap = canvas.width / 7;
+      for (let x = -canvas.height; x < canvas.width + canvas.height; x += gap) {
+        ctx.save(); ctx.translate(x, 0); ctx.rotate(-.35);
+        ctx.fillRect(0, -200, gap * .32, canvas.height * 1.5); ctx.restore();
+      }
+      ctx.globalAlpha = 1;
+      return;
     }
-    ctx.globalAlpha = 1;
+    if (state.backgroundId === 'grid') {
+      ctx.fillStyle = '#f8f7f2'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.strokeStyle = '#d7d6cf'; ctx.lineWidth = Math.max(2, canvas.width / 540);
+      const gap = canvas.width / 10;
+      for (let x = 0; x <= canvas.width; x += gap) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, canvas.height); ctx.stroke(); }
+      for (let y = 0; y <= canvas.height; y += gap) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(canvas.width, y); ctx.stroke(); }
+      return;
+    }
+    ctx.fillStyle = '#fff3e9'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = '#ff745f';
+    const dotGap = canvas.width / 8;
+    for (let y = dotGap / 2; y < canvas.height; y += dotGap) {
+      for (let x = dotGap / 2; x < canvas.width; x += dotGap) {
+        ctx.beginPath(); ctx.arc(x, y, dotGap * .16, 0, Math.PI * 2); ctx.fill();
+      }
+    }
   }
 
   function layerDimensions(layer, image) {
@@ -268,7 +309,7 @@
 
   function renderCanvas(showGuides = true) {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    drawPlaceholder();
+    drawBackground();
     state.images.forEach(layer => drawLayer(layer, showGuides && activeTab === 'layers'));
     ctx.save();
     const responsiveSize = state.fontSize * (canvas.width / 1080);
@@ -296,6 +337,52 @@
       ctx.strokeRect(left - padding, centerY - height / 2 - padding, width + padding * 2, height + padding * 2);
     }
     ctx.restore();
+  }
+
+  function renderBackgroundOptions() {
+    const grid = $('#backgroundGrid');
+    grid.innerHTML = BACKGROUNDS.map(background => `<button class="background-option" type="button" role="radio" data-background-id="${background.id}">
+      <span class="background-swatch" aria-hidden="true"></span>
+      <strong>${background.name}</strong><small>${background.mood}</small>
+    </button>`).join('');
+    grid.querySelectorAll('.background-option').forEach(button => {
+      const background = BACKGROUNDS.find(item => item.id === button.dataset.backgroundId);
+      const swatch = button.querySelector('.background-swatch');
+      swatch.style.background = background.preview;
+      if (background.id === 'grid') swatch.style.backgroundSize = '14px 14px';
+      if (background.id === 'dots') swatch.style.backgroundSize = '18px 18px';
+    });
+    syncBackgroundOptions();
+  }
+
+  function syncBackgroundOptions() {
+    $$('.background-option').forEach(button => {
+      const active = button.dataset.backgroundId === state.backgroundId;
+      button.classList.toggle('active', active);
+      button.setAttribute('aria-checked', String(active));
+    });
+  }
+
+  function selectBackground(id) {
+    if (!BACKGROUNDS.some(background => background.id === id) || state.backgroundId === id) {
+      $('#backgroundDialog').close();
+      return;
+    }
+    recordHistory();
+    state.backgroundId = id;
+    syncBackgroundOptions();
+    renderCanvas();
+    $('#backgroundDialog').close();
+    showToast(`${BACKGROUNDS.find(background => background.id === id).name} 배경을 적용했습니다.`);
+  }
+
+  function positionBackgroundButton() {
+    requestAnimationFrame(() => {
+      const wrap = $('#canvasWrap').getBoundingClientRect();
+      const canvasRect = canvas.getBoundingClientRect();
+      $('#backgroundButton').style.left = `${Math.max(10, canvasRect.left - wrap.left + 12)}px`;
+      $('#backgroundButton').style.top = `${Math.max(10, canvasRect.top - wrap.top + 12)}px`;
+    });
   }
 
   function loadImageElement(dataUrl) {
@@ -732,6 +819,17 @@
     ['textX', 'textY'].forEach(id => $(`#${id}`).addEventListener('input', event => { recordHistory(); state[id] = Number(event.target.value); renderCanvas(); }));
     $$('.align-button').forEach(button => button.addEventListener('click', () => { if (state.textAlign !== button.dataset.align) recordHistory(); state.textAlign = button.dataset.align; syncControls(); renderCanvas(); }));
     $$('.ratio-button').forEach(button => button.addEventListener('click', () => { if (state.ratio !== button.dataset.ratio) recordHistory(); state.ratio = button.dataset.ratio; syncControls(); setCanvasRatio(); }));
+    $('#backgroundButton').addEventListener('click', () => {
+      const dialog = $('#backgroundDialog');
+      if (!dialog.open) dialog.showModal();
+      dialog.querySelector('.background-option.active')?.focus();
+    });
+    $('#closeBackgroundDialog').addEventListener('click', () => $('#backgroundDialog').close());
+    $('#backgroundDialog').addEventListener('click', event => { if (event.target === $('#backgroundDialog')) $('#backgroundDialog').close(); });
+    $('#backgroundGrid').addEventListener('click', event => {
+      const option = event.target.closest('[data-background-id]');
+      if (option) selectBackground(option.dataset.backgroundId);
+    });
     $('#layerList').addEventListener('click', event => {
       const button = event.target.closest('[data-layer-action]'); if (!button) return;
       const id = button.closest('.layer-item').dataset.layerId;
@@ -765,6 +863,7 @@
     canvas.addEventListener('pointerup', endCanvasDrag);
     canvas.addEventListener('pointercancel', endCanvasDrag);
     document.addEventListener('keydown', handleEditorShortcut);
+    window.addEventListener('resize', positionBackgroundButton);
   }
 
   function registerWebMcp() {
@@ -774,12 +873,17 @@
       {
         name: 'get_editor_state', title: '편집 상태 확인', description: '현재 비율, 문구, 이미지 항목과 선택 상태를 확인합니다.',
         inputSchema: { type: 'object', properties: {}, additionalProperties: false }, annotations: { readOnlyHint: true, untrustedContentHint: false },
-        execute: () => ({ ratio: state.ratio, text: state.text, imageCount: state.images.length, selectedLayerId, images: state.images.map(({ id, name, x, y, scale, rotation, flipX, flipY }) => ({ id, name, x, y, scale, rotation, flipX, flipY })), templateCount: templates.length })
+        execute: () => ({ ratio: state.ratio, backgroundId: state.backgroundId, text: state.text, imageCount: state.images.length, selectedLayerId, images: state.images.map(({ id, name, x, y, scale, rotation, flipX, flipY }) => ({ id, name, x, y, scale, rotation, flipX, flipY })), templateCount: templates.length })
       },
       {
         name: 'set_canvas_ratio', title: '캔버스 비율 변경', description: '캔버스 비율을 1:1, 4:5, 9:16 중 하나로 변경합니다.',
         inputSchema: { type: 'object', properties: { ratio: { type: 'string', enum: ['1:1', '4:5', '9:16'] } }, required: ['ratio'], additionalProperties: false }, annotations: { readOnlyHint: false, untrustedContentHint: false },
         execute: ({ ratio }) => { if (!RATIOS[ratio]) throw new Error('지원하지 않는 비율입니다.'); if (state.ratio !== ratio) recordHistory(); state.ratio = ratio; syncControls(); setCanvasRatio(); return { ratio, size: RATIOS[ratio] }; }
+      },
+      {
+        name: 'set_card_background', title: '카드 배경 변경', description: '카드의 기본 배경을 제공되는 배경 중 하나로 변경합니다.',
+        inputSchema: { type: 'object', properties: { backgroundId: { type: 'string', enum: BACKGROUNDS.map(background => background.id) } }, required: ['backgroundId'], additionalProperties: false }, annotations: { readOnlyHint: false, untrustedContentHint: false },
+        execute: ({ backgroundId }) => { if (!BACKGROUNDS.some(background => background.id === backgroundId)) throw new Error('지원하지 않는 배경입니다.'); if (state.backgroundId !== backgroundId) recordHistory(); state.backgroundId = backgroundId; syncBackgroundOptions(); renderCanvas(); return { backgroundId }; }
       },
       {
         name: 'transform_image_layer', title: '이미지 항목 변형', description: '선택한 이미지 항목의 위치, 크기, 회전, 대칭을 변경합니다.',
@@ -796,9 +900,10 @@
   }
 
   async function init() {
-    bindEvents(); syncControls(); setCanvasRatio(); renderLayers();
+    renderBackgroundOptions(); bindEvents(); syncControls(); setCanvasRatio(); renderLayers();
     templates = await loadTemplates(); renderTemplates(); registerWebMcp();
     if (document.fonts?.ready) document.fonts.ready.then(renderCanvas);
+    if ('ResizeObserver' in window) new ResizeObserver(positionBackgroundButton).observe(canvas);
   }
 
   init();
