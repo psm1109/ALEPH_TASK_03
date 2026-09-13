@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="이미지와 한글 문구를 조합해 밈, 카드, SNS 이미지를 만드는 브라우저 편집 도구">
+  <title>MIXIT 스튜디오</title>
+  <link rel="icon" type="image/svg+xml" href="favicon.svg">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="#" aria-label="MIXIT 스튜디오 홈">
+      <span class="brand-mark" aria-hidden="true">M</span>
+      <span>MIXIT <b>STUDIO</b></span>
+    </a>
+    <div class="top-actions">
+      <button class="button ghost" id="resetButton" type="button">새 작업</button>
+      <button class="button dark" id="downloadPngButton" type="button">PNG 저장 <span aria-hidden="true">↓</span></button>
+    </div>
+  </header>
+
+  <main class="workspace">
+    <aside class="panel controls-panel" aria-label="편집 도구">
+      <div class="panel-heading">
+        <p class="eyebrow">EDIT</p>
+        <h1>콘텐츠 편집</h1>
+      </div>
+
+      <section class="control-section">
+        <div class="section-title">
+          <span class="step">01</span>
+          <h2>이미지</h2>
+        </div>
+        <label class="upload-zone" id="uploadZone" for="imageInput">
+          <input id="imageInput" type="file" accept="image/png,image/jpeg,.png,.jpg,.jpeg">
+          <span class="upload-icon" aria-hidden="true">＋</span>
+          <strong>이미지 불러오기</strong>
+          <small>PNG, JPEG · 최대 15MB</small>
+        </label>
+        <p class="status-message" id="fileMessage" role="status" aria-live="polite"></p>
+
+        <div class="slider-row">
+          <label for="imageZoom">확대</label>
+          <output id="imageZoomValue">100%</output>
+          <input id="imageZoom" type="range" min="100" max="240" value="100">
+        </div>
+        <div class="two-col">
+          <label class="field">가로 위치 <input id="imageX" type="range" min="-50" max="50" value="0"></label>
+          <label class="field">세로 위치 <input id="imageY" type="range" min="-50" max="50" value="0"></label>
+        </div>
+      </section>
+
+      <section class="control-section">
+        <div class="section-title">
+          <span class="step coral">02</span>
+          <h2>문구</h2>
+        </div>
+        <label class="field text-field">한글 문구
+          <textarea id="textInput" rows="3" maxlength="120">오늘도\n내가 해냄</textarea>
+          <span class="char-count"><b id="charCount">10</b>/120</span>
+        </label>
+        <div class="two-col compact">
+          <label class="field">글자 크기
+            <div class="unit-input"><input id="fontSize" type="number" min="16" max="180" value="68"><span>px</span></div>
+          </label>
+          <label class="field">글자 색
+            <div class="color-control"><input id="textColor" type="color" value="#ffffff"><span id="colorValue">#FFFFFF</span></div>
+          </label>
+        </div>
+        <div class="alignment-group" role="group" aria-label="문구 정렬">
+          <button class="align-button" data-align="left" type="button" aria-label="왼쪽 정렬">≡</button>
+          <button class="align-button active" data-align="center" type="button" aria-label="가운데 정렬">≡</button>
+          <button class="align-button" data-align="right" type="button" aria-label="오른쪽 정렬">≡</button>
+        </div>
+        <div class="two-col">
+          <label class="field">가로 위치 <input id="textX" type="range" min="5" max="95" value="50"></label>
+          <label class="field">세로 위치 <input id="textY" type="range" min="5" max="95" value="77"></label>
+        </div>
+      </section>
+    </aside>
+
+    <section class="stage" aria-label="이미지 미리보기">
+      <div class="stage-head">
+        <div>
+          <p class="eyebrow">LIVE CANVAS</p>
+          <h2>실시간 미리보기</h2>
+        </div>
+        <div class="ratio-picker" role="group" aria-label="이미지 비율">
+          <button class="ratio-button active" data-ratio="1:1" type="button">1:1</button>
+          <button class="ratio-button" data-ratio="4:5" type="button">4:5</button>
+          <button class="ratio-button" data-ratio="9:16" type="button">9:16</button>
+        </div>
+      </div>
+
+      <div class="canvas-wrap" id="canvasWrap">
+        <canvas id="previewCanvas" width="1080" height="1080" aria-label="편집 결과 미리보기"></canvas>
+        <div class="drag-tip" id="dragTip">문구를 드래그해 옮겨보세요</div>
+      </div>
+      <div class="stage-footer">
+        <span id="canvasSize">1080 × 1080 px</span>
+        <span class="live-dot"><i></i> 변경 사항 자동 반영</span>
+      </div>
+      <button class="button jpeg" id="downloadJpegButton" type="button">JPEG로 저장</button>
+    </section>
+
+    <aside class="panel template-panel" aria-label="템플릿 관리">
+      <div class="panel-heading template-heading">
+        <div><p class="eyebrow">LIBRARY</p><h2>내 템플릿</h2></div>
+        <span class="count-badge" id="templateCount">0</span>
+      </div>
+
+      <form id="templateForm" class="template-form">
+        <label class="sr-only" for="templateName">템플릿 이름</label>
+        <input id="templateName" type="text" maxlength="30" placeholder="템플릿 이름" required>
+        <button class="button coral-button" id="saveTemplateButton" type="submit">템플릿 저장</button>
+      </form>
+      <p class="status-message" id="templateMessage" role="status" aria-live="polite"></p>
+      <div class="template-list" id="templateList"></div>
+
+      <section class="json-tools">
+        <div class="section-title mini"><span class="step ink">JSON</span><h3>백업 및 복원</h3></div>
+        <p>템플릿을 한 파일로 내보내거나 복원할 수 있어요.</p>
+        <div class="json-actions">
+          <button class="button ghost full" id="exportJsonButton" type="button">JSON 내보내기</button>
+          <label class="button outline full" for="jsonInput">JSON 가져오기<input id="jsonInput" type="file" accept="application/json,.json"></label>
+        </div>
+        <p class="status-message" id="jsonMessage" role="status" aria-live="polite"></p>
+      </section>
+    </aside>
+  </main>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <script src="app.js"></script>
+</body>
+</html>
