@@ -238,6 +238,7 @@
     const size = RATIOS[state.ratio];
     canvas.width = size.width;
     canvas.height = size.height;
+    $('#canvasWrap').style.aspectRatio = `${size.width} / ${size.height}`;
     $('#canvasSize').textContent = `${size.width} × ${size.height} px`;
     renderCanvas();
   }

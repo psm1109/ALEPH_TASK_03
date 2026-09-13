@@ -15,7 +15,6 @@
     </a>
     <div class="top-actions">
       <button class="button ghost" id="resetButton" type="button">새 작업</button>
-      <button class="button dark" id="downloadPngButton" type="button">PNG 저장 <span aria-hidden="true">↓</span></button>
     </div>
   </header>
 
@@ -148,7 +147,6 @@
         <span id="canvasSize">1080 × 1080 px</span>
         <span class="live-dot"><i></i> 변경 사항 자동 반영</span>
       </div>
-      <button class="button jpeg" id="downloadJpegButton" type="button">JPEG로 저장</button>
     </section>
 
     <aside class="panel template-panel" aria-label="템플릿 관리">
@@ -174,6 +172,11 @@
         </div>
         <p class="status-message" id="jsonMessage" role="status" aria-live="polite"></p>
       </section>
+
+      <div class="download-actions" aria-label="이미지 저장">
+        <button class="button dark" id="downloadPngButton" type="button">PNG로 저장 <span aria-hidden="true">↓</span></button>
+        <button class="button" id="downloadJpegButton" type="button">JPEG로 저장 <span aria-hidden="true">↓</span></button>
+      </div>
     </aside>
   </main>
 
