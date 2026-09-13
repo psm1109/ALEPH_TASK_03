@@ -719,11 +719,10 @@
     syncLayerControls();
   }
 
-  function selectText(id, editInline = true) {
+  function selectText(id) {
     if (!state.texts.some(layer => layer.id === id)) return;
     selectedTextId = id; selectedElement = 'text';
     switchTab('edit'); syncControls(); renderLayers(); renderCanvas();
-    if (editInline) requestAnimationFrame(() => startInlineTextEditing(id));
   }
 
   function moveText(id, direction) {
@@ -1113,8 +1112,9 @@
     } else {
       const textHit = hitTestText(point);
       if (textHit) {
-        selectText(textHit.id, false);
-        dragState = { type: 'text', startX: point.x, startY: point.y, textX: textHit.x, textY: textHit.y, beforeMove, historySaved: false };
+        const editOnClick = selectedElement === 'text' && selectedTextId === textHit.id;
+        selectText(textHit.id);
+        dragState = { type: 'text', startX: point.x, startY: point.y, textX: textHit.x, textY: textHit.y, beforeMove, historySaved: false, editOnClick };
       } else {
         const imageHit = hitTestLayer(point);
         if (!imageHit) {
@@ -1181,7 +1181,7 @@
     const completedDrag = dragState;
     if (completedDrag) renderLayers();
     dragState = null; canvas.classList.remove('dragging'); setResizeCursor();
-    if (completedDrag?.type === 'text' && !completedDrag.historySaved) startInlineTextEditing(selectedTextId);
+    if (completedDrag?.type === 'text' && !completedDrag.historySaved && completedDrag.editOnClick) startInlineTextEditing(selectedTextId);
   }
 
   function handleEditorShortcut(event) {
