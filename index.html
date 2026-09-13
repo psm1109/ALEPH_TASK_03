@@ -119,19 +119,22 @@
 
     <section class="stage" aria-label="이미지 미리보기">
       <div class="stage-canvas-area">
-        <button class="background-trigger" id="backgroundButton" type="button" aria-haspopup="dialog" aria-controls="backgroundDialog">
-          <span class="background-trigger-icon" aria-hidden="true">▧</span>
-          <span>배경 선택</span>
-        </button>
         <div class="stage-head">
-          <div>
+          <div class="stage-heading">
             <p class="eyebrow">LIVE CANVAS</p>
             <h2>실시간 미리보기</h2>
           </div>
-          <div class="ratio-picker" role="group" aria-label="이미지 비율">
-            <button class="ratio-button active" data-ratio="1:1" type="button">1:1</button>
-            <button class="ratio-button" data-ratio="4:5" type="button">4:5</button>
-            <button class="ratio-button" data-ratio="9:16" type="button">9:16</button>
+          <div class="canvas-toolbar">
+            <button class="background-trigger" id="backgroundButton" type="button" aria-haspopup="dialog" aria-controls="backgroundDialog">
+              <span class="background-trigger-icon" aria-hidden="true">▧</span>
+              <span>배경 선택</span>
+            </button>
+            <span class="toolbar-divider" aria-hidden="true"></span>
+            <div class="ratio-picker" role="group" aria-label="이미지 비율">
+              <button class="ratio-button active" data-ratio="1:1" type="button">1:1</button>
+              <button class="ratio-button" data-ratio="4:5" type="button">4:5</button>
+              <button class="ratio-button" data-ratio="9:16" type="button">9:16</button>
+            </div>
           </div>
         </div>
 
