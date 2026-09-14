@@ -117,6 +117,9 @@ textarea:focus, input:focus { border-color: var(--blue); box-shadow: 0 0 0 2px r
 .ratio-button:hover:not(.active) { background: #efede7; }
 .canvas-wrap { width: min(100%, 680px); height: auto; min-height: 0; aspect-ratio: 1 / 1; margin: 0 auto; display: grid; place-items: center; position: relative; }
 #previewCanvas { display: block; width: 100%; height: 100%; box-shadow: var(--shadow); background-color: #e9e6df; background-image: linear-gradient(45deg,rgba(255,255,255,.48) 25%,transparent 25%),linear-gradient(-45deg,rgba(255,255,255,.48) 25%,transparent 25%),linear-gradient(45deg,transparent 75%,rgba(255,255,255,.48) 75%),linear-gradient(-45deg,transparent 75%,rgba(255,255,255,.48) 75%); background-size: 22px 22px; background-position: 0 0,0 11px,11px -11px,-11px 0; cursor: default; touch-action: none; }
+/* Keep overflowing editing overlays inside the fixed-ratio canvas viewport. */
+.canvas-wrap { overflow: clip; box-shadow: var(--shadow); }
+#previewCanvas { box-shadow: none; }
 .canvas-text-editor-box { position: absolute; z-index: 3; border: 0; outline: 0; }
 .canvas-text-editor-box[hidden] { display: none; }
 .canvas-text-editor { width: 100%; height: 100%; margin: 0; overflow: hidden; resize: none; border: 0; outline: 0; background: transparent; color: transparent; font-family: 'Noto Sans KR', sans-serif; font-weight: 800; white-space: pre-wrap; overflow-wrap: anywhere; word-break: break-all; }

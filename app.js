@@ -175,7 +175,9 @@
       && isFiniteRange(layer.x, -20, 120) && isFiniteRange(layer.y, -20, 120)
       && isFiniteRange(layer.scale, 10, 240) && isFiniteRange(layer.rotation, -180, 180)
       && ((layer.width === undefined && layer.height === undefined)
-        || (isFiniteRange(layer.width, 10, 240) && isFiniteRange(layer.height, 3, 1000)))
+        // Stored dimensions may exceed drag-handle limits for extreme aspect ratios.
+        || (isFiniteRange(layer.width, Number.MIN_VALUE, Number.MAX_SAFE_INTEGER)
+          && isFiniteRange(layer.height, Number.MIN_VALUE, Number.MAX_SAFE_INTEGER)))
       && typeof layer.flipX === 'boolean' && typeof layer.flipY === 'boolean');
   }
 
@@ -185,7 +187,8 @@
       && layer.name.trim() && layer.name.length <= 30 && layer.text.length <= 120
       && (layer.fontFamily === undefined || TEXT_FONTS.includes(layer.fontFamily))
       && /^#[0-9a-f]{6}$/i.test(layer.textColor) && ['left', 'center', 'right'].includes(layer.textAlign)
-      && isFiniteRange(layer.fontSize, 16, 200) && isFiniteRange(layer.x, 5, 95) && isFiniteRange(layer.y, 5, 95)
+      && isFiniteRange(layer.fontSize, 16, 200) && isFiniteRange(layer.x, -50, 150) && isFiniteRange(layer.y, -50, 150)
+      && (layer.autoSize === undefined || typeof layer.autoSize === 'boolean')
       && isFiniteRange(layer.boxWidth, 15, 90) && isFiniteRange(layer.boxHeight, 8, 95));
   }
 
@@ -333,8 +336,8 @@
     $('#fontFamily').value = TEXT_FONTS.includes(text?.fontFamily) ? text.fontFamily : DEFAULT_TEXT.fontFamily;
     $('#textColor').value = text?.textColor || DEFAULT_TEXT.textColor;
     $('#colorValue').textContent = (text?.textColor || DEFAULT_TEXT.textColor).toUpperCase();
-    $('#textX').value = text?.x || DEFAULT_TEXT.x;
-    $('#textY').value = text?.y || DEFAULT_TEXT.y;
+    $('#textX').value = text?.x ?? DEFAULT_TEXT.x;
+    $('#textY').value = text?.y ?? DEFAULT_TEXT.y;
     $$('.ratio-button').forEach(button => button.classList.toggle('active', button.dataset.ratio === state.ratio));
     $$('.align-button').forEach(button => button.classList.toggle('active', button.dataset.align === text?.textAlign));
     syncBackgroundOptions();
@@ -493,16 +496,20 @@
     const responsiveSize = textLayer.fontSize * (canvas.width / 1080);
     const lineHeight = responsiveSize * 1.22;
     const padding = canvas.width / 90;
-    const boxWidth = canvas.width * textLayer.boxWidth / 100;
+    let boxWidth = canvas.width * textLayer.boxWidth / 100;
     const contentWidth = Math.max(responsiveSize * .6, boxWidth - padding * 2);
     ctx.save();
     ctx.font = `800 ${responsiveSize}px ${textFontFamily(textLayer)}`;
     const lines = textLayer.text.split('\n').flatMap(paragraph => wrapTextParagraph(paragraph, contentWidth));
+    if (textLayer.autoSize) {
+      const measuredWidth = Math.max(responsiveSize * .6, ...lines.map(line => ctx.measureText(line).width));
+      boxWidth = Math.min(boxWidth, measuredWidth + padding * 2);
+    }
     ctx.restore();
     const x = canvas.width * textLayer.x / 100;
     const centerY = canvas.height * textLayer.y / 100;
     const contentHeight = Math.max(lineHeight, lines.length * lineHeight) + padding * 2;
-    const height = Math.max(contentHeight, canvas.height * textLayer.boxHeight / 100);
+    const height = textLayer.autoSize ? contentHeight : Math.max(contentHeight, canvas.height * textLayer.boxHeight / 100);
     const left = textLayer.textAlign === 'left' ? x : textLayer.textAlign === 'right' ? x - boxWidth : x - boxWidth / 2;
     const drawX = textLayer.textAlign === 'left' ? left + padding : textLayer.textAlign === 'right' ? left + boxWidth - padding : left + boxWidth / 2;
     return { responsiveSize, lineHeight, padding, boxWidth, contentWidth, contentHeight, lines, x, centerY, height, left, drawX, top: centerY - height / 2 };
@@ -645,7 +652,7 @@
     const text = {
       ...DEFAULT_TEXT, id: makeId(), name: `문구 ${number}`, text: '', textAlign: 'left', x,
       y: Math.max(5, Math.min(95, point.y / canvas.height * 100 + boxHeight / 2)),
-      boxWidth: Math.max(15, Math.min(40, 95 - x)), boxHeight
+      boxWidth: Math.max(15, Math.min(40, 95 - x)), boxHeight, autoSize: true
     };
     state.texts.push(text);
     startInlineTextEditing(text.id, true);
@@ -871,6 +878,7 @@
     const text = selectedText();
     if (!text) return;
     if (saveHistory && text[key] !== value) recordHistory();
+    if (key === 'fontSize' || key === 'fontFamily') text.autoSize = true;
     text[key] = value; syncControls(); renderLayers(); renderCanvas();
   }
 
@@ -998,7 +1006,10 @@
 
   async function loadTemplate(rawItem) {
     const item = normalizeTemplate(rawItem);
-    if (!item) return;
+    if (!item) {
+      setMessage($('#templateMessage'), '템플릿 형식이 올바르지 않아 불러오지 않았습니다. 기존 작업은 유지됩니다.', 'error');
+      return;
+    }
     try { await hydrateImages(item.images); }
     catch (_) { setMessage($('#templateMessage'), '템플릿의 이미지 중 읽을 수 없는 항목이 있어 불러오지 않았습니다.', 'error'); return; }
     recordHistory();
@@ -1147,11 +1158,12 @@
     if (direction.includes('e')) right = clamp(point.x, left + minWidth, left + maxWidth);
     if (direction.includes('n')) top = clamp(point.y, bottom - maxHeight, bottom - bounds.minHeight);
     if (direction.includes('s')) bottom = clamp(point.y, top + bounds.minHeight, top + maxHeight);
-    text.boxWidth = (right - left) / canvas.width * 100;
-    text.boxHeight = (bottom - top) / canvas.height * 100;
-    text.y = clamp((top + bottom) / 2 / canvas.height * 100, 5, 95);
+    text.boxWidth = clamp((right - left) / canvas.width * 100, 15, 90);
+    text.boxHeight = clamp((bottom - top) / canvas.height * 100, 8, 95);
+    text.autoSize = false;
+    text.y = clamp((top + bottom) / 2 / canvas.height * 100, -50, 150);
     const anchorX = text.textAlign === 'left' ? left : text.textAlign === 'right' ? right : (left + right) / 2;
-    text.x = clamp(anchorX / canvas.width * 100, 5, 95);
+    text.x = clamp(anchorX / canvas.width * 100, -50, 150);
   }
 
   function beginInlineTextResize(event) {
@@ -1290,8 +1302,8 @@
       layer.scale = clamp(dragState.initialScale * Math.sqrt(widthRatio * heightRatio), 10, 240);
     } else if (dragState.type === 'text') {
       const text = selectedText(); if (!text) return;
-      text.x = Math.max(5, Math.min(95, dragState.textX + (point.x - dragState.startX) / canvas.width * 100));
-      text.y = Math.max(5, Math.min(95, dragState.textY + (point.y - dragState.startY) / canvas.height * 100));
+      text.x = Math.max(-50, Math.min(150, dragState.textX + (point.x - dragState.startX) / canvas.width * 100));
+      text.y = Math.max(-50, Math.min(150, dragState.textY + (point.y - dragState.startY) / canvas.height * 100));
     } else {
       const layer = selectedLayer(); if (!layer) return;
       layer.x = Math.max(-20, Math.min(120, dragState.layerX + (point.x - dragState.startX) / canvas.width * 100));
@@ -1338,7 +1350,7 @@
     $('#canvasTextEditor').addEventListener('input', event => {
       const text = state.texts.find(layer => layer.id === editingTextId); if (!text) return;
       if (!inlineEditHistorySaved) { recordHistory(); inlineEditHistorySaved = true; }
-      text.text = event.target.value; renderLayers(); renderCanvas();
+      text.text = event.target.value; text.autoSize = true; renderLayers(); renderCanvas();
     });
     $('#canvasTextEditor').addEventListener('blur', finishInlineTextEditing);
     $('#canvasTextEditor').addEventListener('keydown', event => { if (event.key === 'Escape') { event.preventDefault(); event.currentTarget.blur(); } });
