@@ -1,4 +1,6 @@
-@import url('https://fonts.googleapis.com/css2?family=Black+Han+Sans&family=Noto+Sans+KR:wght@400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Black+Han+Sans&family=Do+Hyeon&family=Gaegu:wght@700&family=Jua&family=Nanum+Gothic:wght@800&family=Nanum+Myeongjo:wght@800&family=Noto+Sans+KR:wght@400;500;600;700;800&family=Noto+Serif+KR:wght@800&display=swap');
+
+#fontFamily { width: 100%; min-height: 42px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 4px; background: #fff; color: var(--ink); font: inherit; }
 
 :root {
   --paper: #f5f2ec;
@@ -70,6 +72,9 @@ textarea, input[type="text"], input[type="number"] { width: 100%; border: 1px so
 textarea:focus, input:focus { border-color: var(--blue); box-shadow: 0 0 0 2px rgba(85,99,255,.12); }
 .unit-input, .color-control { height: 44px; border: 1px solid var(--line); border-radius: 3px; background: white; display: flex; align-items: center; }
 .unit-input input { border: 0; box-shadow: none; padding: 8px; }.unit-input span { padding-right: 9px; color: var(--muted); font-size: .75rem; }
+.precise-input { min-width: 0; width: 100%; margin: 6px 0; }
+.precise-input input { width: 100%; min-width: 0; }
+.slider-row > .precise-input { grid-column: 1 / -1; }
 .color-control input { width: 36px; height: 32px; padding: 3px; border: 0; background: transparent; }.color-control span { font-size: .7rem; color: var(--muted); }
 .alignment-group { display: grid; grid-template-columns: repeat(3,1fr); gap: 6px; margin-top: 13px; }
 .align-button { height: 40px; border: 1px solid var(--line); border-radius: 3px; background: #fff; cursor: pointer; font-size: 1.2rem; }

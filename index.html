@@ -52,11 +52,7 @@
         <div class="section-title text-section-title">
 
         </div>
-        <button class="text-tool-button" id="textToolButton" type="button" aria-pressed="false">
-          <span aria-hidden="true">A</span>
-          <strong>문자 추가</strong>
-          <small>카드 위에 직접 입력</small>
-        </button>
+        <p class="section-help">텍스트 도구를 선택한 뒤 카드 위 원하는 위치를 클릭해 바로 입력하세요.</p>
 
       </section>
       </div>
@@ -73,9 +69,21 @@
         <fieldset class="text-controls" id="textControls">
           <legend class="sr-only">선택한 문구 편집</legend>
           <div class="selected-layer-heading"><strong>문구 설정</strong><button class="icon-action danger" id="deleteTextButton" type="button">삭제</button></div>
+        <label class="field">글꼴
+          <select id="fontFamily">
+            <option value="Noto Sans KR">노토 산스 · 기본 고딕</option>
+            <option value="Noto Serif KR">노토 세리프 · 명조</option>
+            <option value="Black Han Sans">검은고딕 · 굵은 제목</option>
+            <option value="Do Hyeon">도현 · 또렷한 제목</option>
+            <option value="Jua">주아 · 둥근 글씨</option>
+            <option value="Nanum Gothic">나눔고딕</option>
+            <option value="Nanum Myeongjo">나눔명조</option>
+            <option value="Gaegu">개구 · 손글씨</option>
+          </select>
+        </label>
         <div class="two-col compact">
           <label class="field">글자 크기
-            <div class="unit-input"><input id="fontSize" type="number" min="16" max="180" value="68"><span>px</span></div>
+            <div class="unit-input"><input id="fontSize" type="number" min="16" max="180" value="55"><span>px</span></div>
           </label>
           <label class="field">글자 색
             <div class="color-control"><input id="textColor" type="color" value="#ffffff"><span id="colorValue">#FFFFFF</span></div>

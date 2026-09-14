@@ -5,6 +5,67 @@
   const DB_NAME = 'mixit-studio';
   const DB_STORE = 'library';
   const MAX_FILE_SIZE = 15 * 1024 * 1024;
+  const TEXT_FONTS = ['Noto Sans KR', 'Noto Serif KR', 'Black Han Sans', 'Do Hyeon', 'Jua', 'Nanum Gothic', 'Nanum Myeongjo', 'Gaegu'];
+  const PRECISE_CONTROLS = [
+    { id: 'textX', key: 'x', type: 'text', label: '텍스트 가로 위치', unit: '%' },
+    { id: 'textY', key: 'y', type: 'text', label: '텍스트 세로 위치', unit: '%' },
+    { id: 'layerScale', key: 'scale', type: 'image', label: '이미지 크기', unit: '%' },
+    { id: 'layerRotation', key: 'rotation', type: 'image', label: '이미지 회전', unit: '°' },
+    { id: 'layerX', key: 'x', type: 'image', label: '이미지 가로 위치', unit: '%' },
+    { id: 'layerY', key: 'y', type: 'image', label: '이미지 세로 위치', unit: '%' }
+  ];
+
+  function bindPreciseControls() {
+    PRECISE_CONTROLS.forEach(({ id, key, type, label, unit }) => {
+      const slider = $(`#${id}`);
+      slider.step = '0.1';
+      const wrapper = document.createElement('div');
+      wrapper.className = 'unit-input precise-input';
+      const input = document.createElement('input');
+      input.id = `${id}Number`;
+      input.type = 'number';
+      input.min = slider.min; input.max = slider.max; input.step = '0.1';
+      input.setAttribute('aria-label', `${label} (${unit})`);
+      const suffix = document.createElement('span');
+      suffix.textContent = unit;
+      wrapper.append(input, suffix);
+      slider.insertAdjacentElement('beforebegin', wrapper);
+      const applyValue = commit => {
+        const value = input.valueAsNumber;
+        if (!Number.isFinite(value)) {
+          if (commit) syncPreciseControls(true);
+          return;
+        }
+        const bounded = Math.max(Number(input.min), Math.min(Number(input.max), value));
+        if (!commit && bounded !== value) return;
+        const layer = type === 'text' ? selectedText() : selectedLayer();
+        if (layer && layer[key] !== bounded) {
+          if (type === 'text') updateSelectedText(key, bounded);
+          else updateSelectedLayer(key, bounded);
+        }
+        if (commit) syncPreciseControls(true);
+      };
+      input.addEventListener('input', () => applyValue(false));
+      input.addEventListener('change', () => applyValue(true));
+      input.addEventListener('blur', () => applyValue(true));
+      input.addEventListener('keydown', event => {
+        if (event.key === 'Enter') { event.preventDefault(); input.blur(); }
+      });
+    });
+  }
+
+  function syncPreciseControls(force = false) {
+    PRECISE_CONTROLS.forEach(({ id, key, type }) => {
+      const input = $(`#${id}Number`);
+      if (!input || (!force && document.activeElement === input)) return;
+      const layer = type === 'text' ? selectedText() : selectedLayer();
+      input.value = layer ? Number(layer[key].toFixed(3)) : $(`#${id}`).value;
+    });
+  }
+  function textFontFamily(layer) {
+    const family = TEXT_FONTS.includes(layer?.fontFamily) ? layer.fontFamily : 'Noto Sans KR';
+    return `'${family}', sans-serif`;
+  }
   const RATIOS = {
     '1:1': { width: 1080, height: 1080 },
     '4:5': { width: 1080, height: 1350 },
@@ -26,7 +87,7 @@
     { id: 'dots', name: '코랄 도트', mood: '장난스럽고 가볍게', preview: 'radial-gradient(circle,#ff745f 18%,transparent 20%)' }
   ];
   const DEFAULT_TEXT = {
-    id: 'text-default', name: '문구 1', text: '오늘도\n내가 해냄', fontSize: 68, textColor: '#ffffff',
+    id: 'text-default', name: '문구 1', text: '오늘도\n내가 해냄', fontSize: 55, fontFamily: 'Noto Sans KR', textColor: '#ffffff',
     x: 50, y: 77, textAlign: 'center', boxWidth: 60, boxHeight: 20
   };
   const DEFAULT_STATE = {
@@ -122,6 +183,7 @@
     return Boolean(layer && typeof layer === 'object' && !Array.isArray(layer)
       && typeof layer.id === 'string' && typeof layer.name === 'string' && typeof layer.text === 'string'
       && layer.name.trim() && layer.name.length <= 30 && layer.text.length <= 120
+      && (layer.fontFamily === undefined || TEXT_FONTS.includes(layer.fontFamily))
       && /^#[0-9a-f]{6}$/i.test(layer.textColor) && ['left', 'center', 'right'].includes(layer.textAlign)
       && isFiniteRange(layer.fontSize, 16, 180) && isFiniteRange(layer.x, 5, 95) && isFiniteRange(layer.y, 5, 95)
       && isFiniteRange(layer.boxWidth, 15, 90) && isFiniteRange(layer.boxHeight, 8, 95));
@@ -268,13 +330,13 @@
     const text = selectedText();
     $('#textControls').disabled = !text;
     $('#fontSize').value = text?.fontSize || DEFAULT_TEXT.fontSize;
+    $('#fontFamily').value = TEXT_FONTS.includes(text?.fontFamily) ? text.fontFamily : DEFAULT_TEXT.fontFamily;
     $('#textColor').value = text?.textColor || DEFAULT_TEXT.textColor;
     $('#colorValue').textContent = (text?.textColor || DEFAULT_TEXT.textColor).toUpperCase();
     $('#textX').value = text?.x || DEFAULT_TEXT.x;
     $('#textY').value = text?.y || DEFAULT_TEXT.y;
     $$('.ratio-button').forEach(button => button.classList.toggle('active', button.dataset.ratio === state.ratio));
     $$('.align-button').forEach(button => button.classList.toggle('active', button.dataset.align === text?.textAlign));
-    $('#textToolButton').setAttribute('aria-pressed', String(textToolActive));
     syncBackgroundOptions();
     syncLayerControls();
   }
@@ -306,7 +368,6 @@
     $('#textTabButton').setAttribute('aria-selected', String(!isImage));
     $(isImage ? '#imageTab' : '#textTab').append($('#contentInspector'));
     $('#contentListTitle').textContent = isImage ? '이미지 목록' : '텍스트 목록';
-    $('#textToolButton').setAttribute('aria-pressed', String(textToolActive));
     renderLayers();
     renderCanvas();
   }
@@ -435,7 +496,7 @@
     const boxWidth = canvas.width * textLayer.boxWidth / 100;
     const contentWidth = Math.max(responsiveSize * .6, boxWidth - padding * 2);
     ctx.save();
-    ctx.font = `800 ${responsiveSize}px 'Noto Sans KR', sans-serif`;
+    ctx.font = `800 ${responsiveSize}px ${textFontFamily(textLayer)}`;
     const lines = textLayer.text.split('\n').flatMap(paragraph => wrapTextParagraph(paragraph, contentWidth));
     ctx.restore();
     const x = canvas.width * textLayer.x / 100;
@@ -472,7 +533,7 @@
     const layout = textLayout(textLayer);
     const { responsiveSize, lineHeight, lines, drawX, centerY } = layout;
     ctx.save();
-    ctx.font = `800 ${responsiveSize}px 'Noto Sans KR', sans-serif`;
+    ctx.font = `800 ${responsiveSize}px ${textFontFamily(textLayer)}`;
     ctx.textAlign = textLayer.textAlign; ctx.textBaseline = 'middle';
     ctx.fillStyle = textLayer.textColor; ctx.strokeStyle = 'rgba(0,0,0,.42)';
     ctx.lineWidth = Math.max(3, responsiveSize * .075); ctx.lineJoin = 'round';
@@ -531,6 +592,7 @@
     Object.assign(editor.style, {
       padding: `${verticalPadding}px ${horizontalPadding}px`,
       fontSize: `${layout.responsiveSize * scaleX}px`,
+      fontFamily: textFontFamily(text),
       lineHeight: `${lineHeight}px`,
       textAlign: text.textAlign,
       color: 'transparent',
@@ -570,7 +632,7 @@
 
   function activateTextTool() {
     if (editingTextId) $('#canvasTextEditor').blur();
-    textToolActive = !textToolActive;
+    textToolActive = true;
     selectedElement = null;
     syncControls(); renderLayers(); renderCanvas(); setResizeCursor();
   }
@@ -590,6 +652,7 @@
   }
 
   function renderCanvas(showGuides = true) {
+    syncPreciseControls();
     const hasText = activeTab === 'text' && selectedElement === 'text' && Boolean(selectedText());
     const hasImage = activeTab === 'image' && selectedElement === 'image' && Boolean(selectedLayer());
     $('#textControls').hidden = !hasText;
@@ -737,7 +800,7 @@
     $('#layerCount').textContent = items.length;
     if (!items.length) {
       const label = activeTab === 'image' ? '이미지' : '텍스트';
-      list.innerHTML = `<div class="layer-empty">추가된 ${label}가 없어요.<br>위의 추가 버튼을 눌러주세요.</div>`;
+      list.innerHTML = `<div class="layer-empty">추가된 ${label}가 없어요.<br>${activeTab === 'text' ? '텍스트 도구를 선택하고 카드 위를 클릭하세요.' : '위의 추가 버튼을 눌러주세요.'}</div>`;
       syncLayerControls(); return;
     }
     list.innerHTML = items.map(({ type, layer }) => {
@@ -760,6 +823,7 @@
   function selectText(id) {
     if (!state.texts.some(layer => layer.id === id)) return;
     selectedTextId = id; selectedElement = 'text';
+    textToolActive = false;
     switchTab(selectedElement || activeTab); syncControls(); renderLayers(); renderCanvas();
   }
 
@@ -896,7 +960,10 @@
     const anchor = document.createElement('a'); anchor.download = filename; anchor.href = href; anchor.click();
   }
 
-  function downloadImage(type) {
+  async function downloadImage(type) {
+    if (document.fonts) {
+      await Promise.all(state.texts.map(layer => document.fonts.load(`800 ${layer.fontSize}px ${textFontFamily(layer)}`).catch(() => {})));
+    }
     renderCanvas(false);
     const extension = type === 'image/png' ? 'png' : 'jpg';
     const firstText = state.texts.find(layer => layer.text.trim())?.text.split('\n')[0] || 'mixit';
@@ -1230,7 +1297,7 @@
   }
 
   function handleEditorShortcut(event) {
-    if (event.target.matches('input, textarea, [contenteditable="true"]')) return;
+    if (event.target.matches('input, textarea, select, [contenteditable="true"]')) return;
     const key = event.key.toLowerCase();
     const command = event.ctrlKey || event.metaKey;
     if (command && key === 'z') {
@@ -1256,8 +1323,7 @@
     ['dragleave', 'drop'].forEach(name => upload.addEventListener(name, event => { event.preventDefault(); upload.classList.remove('dragover'); }));
     upload.addEventListener('drop', event => handleImageFiles(event.dataTransfer.files));
     $('#imageTabButton').addEventListener('click', () => switchTab('image'));
-    $('#textTabButton').addEventListener('click', () => switchTab('text'));
-    $('#textToolButton').addEventListener('click', activateTextTool);
+    $('#textTabButton').addEventListener('click', () => { switchTab('text'); activateTextTool(); });
     $('#canvasTextEditor').addEventListener('input', event => {
       const text = state.texts.find(layer => layer.id === editingTextId); if (!text) return;
       if (!inlineEditHistorySaved) { recordHistory(); inlineEditHistorySaved = true; }
@@ -1271,6 +1337,11 @@
     editorBox.addEventListener('pointerup', endInlineTextResize);
     editorBox.addEventListener('pointercancel', endInlineTextResize);
     $('#fontSize').addEventListener('input', event => updateSelectedText('fontSize', Math.max(16, Math.min(180, Number(event.target.value) || 16))));
+    $('#fontFamily').addEventListener('change', event => {
+      if (!TEXT_FONTS.includes(event.target.value)) return;
+      updateSelectedText('fontFamily', event.target.value);
+      document.fonts?.load(`800 55px ${textFontFamily(selectedText())}`).then(() => renderCanvas()).catch(() => {});
+    });
     $('#textColor').addEventListener('input', event => updateSelectedText('textColor', event.target.value));
     [['textX', 'x'], ['textY', 'y']].forEach(([id, key]) => $(`#${id}`).addEventListener('input', event => updateSelectedText(key, Number(event.target.value))));
     $$('.align-button').forEach(button => button.addEventListener('click', () => updateSelectedText('textAlign', button.dataset.align)));
@@ -1403,9 +1474,11 @@
   }
 
   async function init() {
+    bindPreciseControls();
     renderBackgroundOptions(); bindEvents(); syncControls(); setCanvasRatio(); switchTab(activeTab);
     templates = await loadTemplates(); renderTemplates(); registerWebMcp();
     if (document.fonts?.ready) document.fonts.ready.then(renderCanvas);
+    document.fonts?.addEventListener('loadingdone', () => renderCanvas());
   }
 
   init();
