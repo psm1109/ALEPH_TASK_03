@@ -185,7 +185,7 @@
       && layer.name.trim() && layer.name.length <= 30 && layer.text.length <= 120
       && (layer.fontFamily === undefined || TEXT_FONTS.includes(layer.fontFamily))
       && /^#[0-9a-f]{6}$/i.test(layer.textColor) && ['left', 'center', 'right'].includes(layer.textAlign)
-      && isFiniteRange(layer.fontSize, 16, 180) && isFiniteRange(layer.x, 5, 95) && isFiniteRange(layer.y, 5, 95)
+      && isFiniteRange(layer.fontSize, 16, 200) && isFiniteRange(layer.x, 5, 95) && isFiniteRange(layer.y, 5, 95)
       && isFiniteRange(layer.boxWidth, 15, 90) && isFiniteRange(layer.boxHeight, 8, 95));
   }
 
@@ -1343,7 +1343,25 @@
     editorBox.addEventListener('pointermove', moveInlineTextResize);
     editorBox.addEventListener('pointerup', endInlineTextResize);
     editorBox.addEventListener('pointercancel', endInlineTextResize);
-    $('#fontSize').addEventListener('input', event => updateSelectedText('fontSize', Math.max(16, Math.min(180, Number(event.target.value) || 16))));
+    function commitFontSize() {
+      const input = $('#fontSize');
+      const text = selectedText();
+      if (!text) return;
+      const rawVal = Number(input.value);
+      const newSize = Math.max(16, Math.min(200, Number.isFinite(rawVal) && rawVal > 0 ? rawVal : 16));
+      input.value = newSize;
+      if (text.fontSize !== newSize) {
+        updateSelectedText('fontSize', newSize);
+      }
+    }
+    $('#fontSize').addEventListener('keydown', event => {
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        commitFontSize();
+        event.currentTarget.blur();
+      }
+    });
+    $('#fontSize').addEventListener('change', commitFontSize);
     $('#fontFamily').addEventListener('change', event => {
       if (!TEXT_FONTS.includes(event.target.value)) return;
       updateSelectedText('fontFamily', event.target.value);
