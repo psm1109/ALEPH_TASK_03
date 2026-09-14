@@ -273,7 +273,7 @@ textarea:focus, input:focus { border-color: var(--blue); box-shadow: 0 0 0 2px r
 .status-message { overflow-wrap: anywhere; }
 
 /* Keep the layer card at the upper left, with reserved canvas clearance. */
-.workspace { grid-template-columns: minmax(280px, 320px) minmax(0, 1fr) minmax(240px, 280px); }
+.workspace { grid-template-columns: 360px minmax(0, 1fr) 320px; }
 .stage { container-type: inline-size; grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) 32px; align-items: start; }
 .stage-canvas-area { --layer-card-width: clamp(120px, 24cqw, 200px); --layer-gap: clamp(8px, 2cqw, 16px); min-width: 0; padding: 24px var(--layer-gap) 24px calc(var(--layer-card-width) + var(--layer-gap) * 2); transition: none; }
 .workspace-layers { position: absolute; inset: 24px auto auto var(--layer-gap); z-index: 4; width: var(--layer-card-width); min-width: 0; min-height: 0; max-height: none; margin: 0; box-shadow: 0 4px 18px rgba(0,0,0,.08); }
@@ -298,8 +298,8 @@ textarea:focus, input:focus { border-color: var(--blue); box-shadow: 0 0 0 2px r
 .canvas-wrap { min-width: 0; }
 .field, .unit-input, .color-control, .template-form > * { min-width: 0; }
 .two-col, .transform-buttons, .json-actions { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-.upload-zone { padding: 12px; grid-template-columns: 36px minmax(0, 1fr); gap: 8px; }
-.upload-icon { width: 36px; }
+.upload-zone { padding: 16px; grid-template-columns: 36px minmax(0, 1fr); grid-template-rows: auto auto; gap: 6px 10px; align-content: center; }
+.upload-icon { width: 36px; height: 48px; grid-row: 1 / 3; }
 .template-form { grid-template-columns: minmax(0, 1fr); }
 .toast { max-width: calc(100vw - 32px); overflow-wrap: anywhere; }
 
@@ -314,7 +314,7 @@ textarea:focus, input:focus { border-color: var(--blue); box-shadow: 0 0 0 2px r
 
 @media (max-width: 1500px) {
   body { height: auto; overflow: auto; }
-  .workspace { grid-template-columns: 280px minmax(0, 1fr); height: auto; min-height: calc(100dvh - 72px); overflow: visible; align-items: start; }
+  .workspace { grid-template-columns: 320px minmax(0, 1fr); height: auto; min-height: calc(100dvh - 72px); overflow: visible; align-items: start; }
   .controls-panel { padding: 22px 16px 22px 80px; }
   .editor-tabs { width: 64px; }
   .stage { min-height: 0; }
@@ -339,6 +339,50 @@ textarea:focus, input:focus { border-color: var(--blue); box-shadow: 0 0 0 2px r
   .layer-list { max-height: 240px; }
   .background-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); padding: 14px; }
   .background-dialog-head, .background-dialog-copy { padding-left: 14px; padding-right: 14px; }
+}
+
+/* Consistent control sizing without changing canvas content or interactions. */
+.panel { padding-top: 24px; padding-bottom: 24px; }
+.template-panel { padding-left: 20px; padding-right: 20px; }
+.panel-heading h1, .panel-heading h2, .stage-head h2 { font-size: 21px; line-height: 1.35; }
+.section-title > div { min-width: 0; }
+.section-help, .layer-drag-help, .text-box-help, .inspector-empty { overflow-wrap: anywhere; line-height: 1.65; }
+.unit-input input { min-width: 0; flex: 1; }
+.unit-input span, .color-control input, .color-control span { flex-shrink: 0; }
+.color-control { gap: 2px; }
+.color-control input { width: 30px; }
+.color-control span { white-space: nowrap; font-size: 11px; }
+.field > input[type="range"] { margin-inline: 0; }
+.selected-layer-heading { margin-bottom: 12px; }
+#fontFamily, .template-form input { min-height: 44px; border-radius: 6px; }
+.unit-input, .color-control, .align-button, .transform-buttons button, .icon-action { border-radius: 6px; }
+.align-button, .transform-buttons button { min-height: 40px; }
+.transform-buttons button { padding: 6px 4px; white-space: nowrap; }
+.button { line-height: 1.4; }
+.template-item { grid-template-columns: minmax(0, 1fr) 48px; padding: 12px; gap: 10px; }
+.template-thumbnail { width: 48px; height: 48px; }
+.template-actions { gap: 6px; }
+.template-empty { display: block; padding: 24px 12px; min-height: 112px; }
+.template-list { scrollbar-gutter: stable; }
+.background-dialog-head { gap: 12px; }
+.dialog-close { flex-shrink: 0; border-radius: 6px; }
+
+/* Stack the layer card above the canvas when a side-by-side layout gets cramped. */
+@container (max-width: 900px) {
+  .stage-canvas-area { padding: 20px 16px 24px; }
+  .workspace-layers { position: relative; inset: auto; width: 100%; padding: 12px; margin: 0 0 20px; }
+  #workspaceLayerList { max-height: 156px; }
+  #workspaceLayerList .layer-item { grid-template-columns: minmax(0, 1fr) auto; }
+  #workspaceLayerList .layer-select { grid-template-columns: 30px minmax(0, 1fr); }
+  #workspaceLayerList .layer-thumb { width: 30px; height: 30px; }
+  .canvas-toolbar { width: auto; max-width: 100%; }
+  .stage-head { align-items: center; }
+  .stage-footer { font-size: .7rem; }
+}
+
+@media (max-width: 800px) {
+  .panel, .controls-panel { padding: 20px 16px; }
+  .stage-head h2 { font-size: 19px; }
 }
 
 @media (max-width: 400px) {
