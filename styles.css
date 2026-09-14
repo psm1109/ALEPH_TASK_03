@@ -355,3 +355,24 @@ textarea:focus, input:focus { border-color: var(--blue); box-shadow: 0 0 0 2px r
 
 .background-image-upload { width: 100%; padding: 12px; margin-bottom: 8px; border: 1px dashed var(--muted, #777); border-radius: 8px; background: #f3f0ff; color: #5140b8; font: inherit; font-weight: 700; cursor: pointer; }
 .background-image-upload:disabled { opacity: .5; cursor: wait; }
+
+/* Keep native input and canvas line measurement on identical wrapping rules. */
+.canvas-text-editor, .canvas-text-wrap-probe {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: normal;
+  letter-spacing: normal;
+  tab-size: 8;
+}
+.canvas-text-wrap-probe {
+  position: fixed;
+  left: -100000px;
+  top: 0;
+  height: auto;
+  padding: 0;
+  border: 0;
+  margin: 0;
+  visibility: hidden;
+  pointer-events: none;
+  line-height: 1.22;
+}

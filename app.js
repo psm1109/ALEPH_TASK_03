@@ -491,22 +491,40 @@
     ctx.restore();
   }
 
+  let textWrapProbe;
   function wrapTextParagraph(paragraph, maxWidth) {
+    if (!paragraph) return [''];
+    // Use the same browser line-breaking engine and displayed metrics as the textarea.
+    // A whitespace heuristic differs from CSS for Korean, punctuation and mixed scripts.
+    if (!textWrapProbe) {
+      textWrapProbe = document.createElement('div');
+      textWrapProbe.className = 'canvas-text-wrap-probe';
+      textWrapProbe.setAttribute('aria-hidden', 'true');
+      document.body.append(textWrapProbe);
+    }
+    const scale = canvas.getBoundingClientRect().width / canvas.width || 1;
+    textWrapProbe.style.font = ctx.font;
+    textWrapProbe.style.fontSize = `${parseFloat(textWrapProbe.style.fontSize) * scale}px`;
+    textWrapProbe.style.width = `${maxWidth * scale}px`;
+    textWrapProbe.textContent = paragraph;
+    const node = textWrapProbe.firstChild;
+    const range = document.createRange();
     const parts = 'Segmenter' in Intl
       ? [...new Intl.Segmenter('ko', { granularity: 'grapheme' }).segment(paragraph)].map(s => s.segment)
       : Array.from(paragraph);
-    const lines = []; let line = '';
+    const lines = []; let line = '', offset = 0, previousTop;
     for (const part of parts) {
-      if (line && ctx.measureText(line + part).width > maxWidth) {
-        const breakAt = line.lastIndexOf(' ');
-        if (breakAt > 0 && !/\s/u.test(part)) {
-          lines.push(line.slice(0, breakAt + 1)); line = line.slice(breakAt + 1);
-        } else { lines.push(line); line = ''; }
-        if (line && ctx.measureText(line + part).width > maxWidth) { lines.push(line); line = ''; }
+      range.setStart(node, offset);
+      offset += part.length;
+      range.setEnd(node, offset);
+      const top = range.getBoundingClientRect().top;
+      if (previousTop !== undefined && Math.abs(top - previousTop) > parseFloat(textWrapProbe.style.fontSize) * .6) {
+        lines.push(line); line = '';
       }
-      line += part;
+      line += part; previousTop = top;
     }
-    lines.push(line); return lines;
+    lines.push(line);
+    return lines;
   }
 
   function textLayout(textLayer) {
