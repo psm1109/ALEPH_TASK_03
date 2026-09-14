@@ -91,7 +91,7 @@
     x: 50, y: 77, textAlign: 'center', boxWidth: 60, boxHeight: 20
   };
   const DEFAULT_STATE = {
-    ratio: '1:1', backgroundId: 'aurora', images: [], texts: [DEFAULT_TEXT]
+    ratio: '1:1', backgroundId: 'aurora', backgroundImage: null, images: [], texts: [DEFAULT_TEXT]
   };
 
   let state = { ...DEFAULT_STATE, images: [], texts: [{ ...DEFAULT_TEXT }] };
@@ -107,6 +107,7 @@
   let dragState = null;
   let toastTimer;
   let imageCache = new Map();
+  let backgroundImageCache = null;
   let elementClipboard = null;
   const undoStack = [];
   const redoStack = [];
@@ -235,9 +236,12 @@
       || item.layerOrder.some(key => !keys.includes(key)))) return null;
     const layerOrder = item.layerOrder ? [...item.layerOrder] : keys;
     const thumbnail = typeof item.thumbnail === 'string' && /^data:image\/png;base64,/.test(item.thumbnail) ? item.thumbnail : null;
-    const backgroundId = BACKGROUNDS.some(background => background.id === item.backgroundId) ? item.backgroundId : DEFAULT_STATE.backgroundId;
+    const backgroundImage = item.backgroundImage ?? null;
+    if (backgroundImage !== null && (typeof backgroundImage !== 'string' || !/^data:image\/(png|jpeg);base64,/i.test(backgroundImage))) return null;
+    if (item.backgroundId === 'custom' && !backgroundImage) return null;
+    const backgroundId = item.backgroundId === 'custom' ? 'custom' : BACKGROUNDS.some(background => background.id === item.backgroundId) ? item.backgroundId : DEFAULT_STATE.backgroundId;
     return {
-      id: item.id, name: item.name, ratio: item.ratio, backgroundId,
+      id: item.id, name: item.name, ratio: item.ratio, backgroundId, backgroundImage,
       createdAt: item.createdAt, images, texts, layerOrder, thumbnail
     };
   }
@@ -302,7 +306,7 @@
 
   async function restoreSnapshot(entry) {
     try {
-      await hydrateImages(entry.state.images);
+      await hydrateImages(entry.state.images, entry.state.backgroundImage);
       state = cloneState(entry.state);
       selectedLayerId = entry.selectedLayerId;
       selectedTextId = entry.selectedTextId;
@@ -386,6 +390,13 @@
   }
 
   function drawBackground() {
+    if (state.backgroundId === 'custom' && backgroundImageCache) {
+      const image = backgroundImageCache;
+      const scale = Math.max(canvas.width / image.naturalWidth, canvas.height / image.naturalHeight);
+      const width = image.naturalWidth * scale, height = image.naturalHeight * scale;
+      ctx.drawImage(image, (canvas.width - width) / 2, (canvas.height - height) / 2, width, height);
+      return;
+    }
     if (state.backgroundId === 'transparent') return;
     const palettes = {
       aurora: ['#5864ff', '#923cff', '#ff745f'], sunrise: ['#ff6559', '#ffb83f', '#fff0b7'],
@@ -869,10 +880,12 @@
     return { dataUrl, image };
   }
 
-  async function hydrateImages(layers) {
+  async function hydrateImages(layers, backgroundImage = null) {
     const nextCache = new Map();
     await Promise.all(layers.map(async layer => nextCache.set(layer.id, await loadImageElement(layer.dataUrl))));
+    const nextBackground = backgroundImage ? await loadImageElement(backgroundImage) : null;
     imageCache = nextCache;
+    backgroundImageCache = nextBackground;
   }
 
   async function handleImageFiles(fileList) {
@@ -1130,7 +1143,7 @@
       setMessage($('#templateMessage'), '템플릿 형식이 올바르지 않아 불러오지 않았습니다. 기존 작업은 유지됩니다.', 'error');
       return;
     }
-    try { await hydrateImages(item.images); }
+    try { await hydrateImages(item.images, item.backgroundImage); }
     catch (_) { setMessage($('#templateMessage'), '템플릿의 이미지 중 읽을 수 없는 항목이 있어 불러오지 않았습니다.', 'error'); return; }
     recordHistory();
     state = { ...DEFAULT_STATE, ...item, images: item.images.map(layer => ({ ...layer })), texts: item.texts.map(layer => ({ ...layer })) };
@@ -1519,6 +1532,28 @@
     [['textX', 'x'], ['textY', 'y']].forEach(([id, key]) => $(`#${id}`).addEventListener('input', event => updateSelectedText(key, Number(event.target.value))));
     $$('.align-button').forEach(button => button.addEventListener('click', () => updateSelectedText('textAlign', button.dataset.align)));
     $$('.ratio-button').forEach(button => button.addEventListener('click', () => { if (state.ratio !== button.dataset.ratio) recordHistory(); state.ratio = button.dataset.ratio; syncControls(); setCanvasRatio(); }));
+    $('#backgroundImageButton').addEventListener('click', () => $('#backgroundImageInput').click());
+    $('#backgroundImageInput').addEventListener('change', async event => {
+      const file = event.target.files[0];
+      event.target.value = '';
+      if (!file) return;
+      if (!['image/png', 'image/jpeg'].includes(file.type) || file.size > MAX_FILE_SIZE) {
+        showToast('15MB 이하의 PNG 또는 JPEG 이미지를 선택해주세요.'); return;
+      }
+      const button = $('#backgroundImageButton');
+      button.disabled = true;
+      try {
+        const { dataUrl, image } = await sanitizeImageFile(file);
+        recordHistory();
+        state.backgroundImage = dataUrl;
+        state.backgroundId = 'custom';
+        backgroundImageCache = image;
+        syncBackgroundOptions(); renderCanvas();
+        $('#backgroundDialog').close();
+        showToast('이미지를 배경으로 적용했습니다.');
+      } catch (_) { showToast('이미지를 읽지 못했습니다. 기존 배경은 유지됩니다.'); }
+      finally { button.disabled = false; }
+    });
     $('#backgroundButton').addEventListener('click', () => {
       const dialog = $('#backgroundDialog');
       if (!dialog.open) dialog.showModal();

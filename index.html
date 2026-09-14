@@ -179,6 +179,9 @@
             <button class="dialog-close" id="closeBackgroundDialog" type="button" aria-label="배경 선택 닫기">×</button>
           </div>
           <p class="background-dialog-copy">카드 분위기에 맞는 배경을 선택하세요. 이미지와 문구 배치는 그대로 유지됩니다.</p>
+          <button type="button" id="backgroundImageButton" class="background-image-upload">이미지에서 배경 가져오기</button>
+          <input type="file" id="backgroundImageInput" accept="image/png,image/jpeg" hidden>
+          <p class="background-dialog-copy">PNG · JPEG, 최대 15MB. 비율을 유지하며 배경을 채우고 넘치는 부분은 중앙 기준으로 잘립니다.</p>
           <div class="background-grid" id="backgroundGrid" role="radiogroup" aria-label="기본 배경 목록"></div>
         </dialog>
         <div class="stage-footer">

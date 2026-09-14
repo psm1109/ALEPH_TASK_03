@@ -352,3 +352,6 @@ textarea:focus, input:focus { border-color: var(--blue); box-shadow: 0 0 0 2px r
 @media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; transition: none !important; } }
 
 .canvas-text-editor-box .editor-resize-handle.n, .canvas-text-editor-box .editor-resize-handle.s { display: none; }
+
+.background-image-upload { width: 100%; padding: 12px; margin-bottom: 8px; border: 1px dashed var(--muted, #777); border-radius: 8px; background: #f3f0ff; color: #5140b8; font: inherit; font-weight: 700; cursor: pointer; }
+.background-image-upload:disabled { opacity: .5; cursor: wait; }
