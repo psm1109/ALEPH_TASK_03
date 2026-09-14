@@ -131,6 +131,16 @@
     </aside>
 
     <section class="stage" aria-label="이미지 미리보기">
+      <aside class="workspace-layers" aria-label="전체 레이어 순서">
+        <div class="workspace-layers-head">
+          <div class="section-title"><h2>레이어</h2><span id="workspaceLayerCount" class="item-count">0</span></div>
+          <button class="layer-panel-toggle" id="toggleLayerPanel" type="button" aria-label="레이어 목록 접기/펼치기" title="레이어 목록 접기/펼치기" aria-expanded="true">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m18 15-6-6-6 6"/></svg>
+          </button>
+        </div>
+        <p class="section-help">위 항목이 앞에 표시됩니다.<br>드래그 또는 ↑↓로 순서 변경</p>
+        <div class="layer-list" id="workspaceLayerList"></div>
+      </aside>
       <div class="stage-canvas-area">
         <div class="stage-head">
           <div class="stage-heading">

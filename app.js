@@ -796,6 +796,10 @@
   function renderLayers() {
     const list = $('#layerList');
     const allItems = orderedElements().reverse();
+    $('#workspaceLayerCount').textContent = allItems.length;
+    $('#workspaceLayerList').innerHTML = allItems.length
+      ? allItems.map(({ type, layer }, index) => layerRow(type, layer, true, index, allItems.length)).join('')
+      : '<div class="layer-empty">추가된 레이어가 없어요.</div>';
     const items = allItems.filter(({ type }) => type === activeTab);
     $('#layerCount').textContent = items.length;
     if (!items.length) {
@@ -803,21 +807,23 @@
       list.innerHTML = `<div class="layer-empty">추가된 ${label}가 없어요.<br>${activeTab === 'text' ? '텍스트 도구를 선택하고 카드 위를 클릭하세요.' : '위의 추가 버튼을 눌러주세요.'}</div>`;
       syncLayerControls(); return;
     }
-    list.innerHTML = items.map(({ type, layer }) => {
+    list.innerHTML = items.map(({ type, layer }) => layerRow(type, layer)).join('');
+    syncLayerControls();
+  }
+
+  function layerRow(type, layer, sortable = false, index = 0, count = 0) {
       const isText = type === 'text';
       const label = isText ? (layer.text.split('\n')[0].trim() || layer.name) : layer.name;
       const active = selectedElement === type && layer.id === (isText ? selectedTextId : selectedLayerId);
-      return `<article draggable="true" class="layer-item ${active ? 'active' : ''}" data-layer-id="${escapeHtml(layer.id)}" data-element-type="${type}">
+      return `<article ${sortable ? 'draggable="true"' : ''} class="layer-item ${active ? 'active' : ''}" data-layer-id="${escapeHtml(layer.id)}" data-element-type="${type}">
         <button class="layer-select" type="button" data-layer-action="select" aria-pressed="${active}">
           ${isText ? '<span class="layer-thumb text-thumb" aria-hidden="true">T</span>' : `<img draggable="false" class="layer-thumb" src="${layer.dataUrl}" alt="">`}
-          <span class="layer-copy"><strong>${escapeHtml(label)}</strong><small>${isText ? '문구' : '이미지'} · 드래그로 순서 변경</small></span>
+          <span class="layer-copy"><strong>${escapeHtml(label)}</strong><small>${isText ? '텍스트' : '이미지'}</small></span>
         </button>
-        <span class="layer-order">
-          <button type="button" data-layer-action="up" aria-label="앞으로 가져오기" ${allItems[0].layer.id === layer.id ? 'disabled' : ''}>↑</button>
-          <button type="button" data-layer-action="down" aria-label="뒤로 보내기" ${allItems[allItems.length - 1].layer.id === layer.id ? 'disabled' : ''}>↓</button>
-        </span></article>`;
-    }).join('');
-    syncLayerControls();
+        ${sortable ? `<span class="layer-order">
+          <button type="button" data-layer-action="up" aria-label="앞으로 가져오기" ${index === 0 ? 'disabled' : ''}>↑</button>
+          <button type="button" data-layer-action="down" aria-label="뒤로 보내기" ${index === count - 1 ? 'disabled' : ''}>↓</button>
+        </span>` : ''}</article>`;
   }
 
   function selectText(id) {
@@ -1128,7 +1134,7 @@
 
   function setResizeCursor(direction = '', canMove = false) {
     const cursors = { n: 'ns-resize', s: 'ns-resize', e: 'ew-resize', w: 'ew-resize', ne: 'nesw-resize', sw: 'nesw-resize', nw: 'nwse-resize', se: 'nwse-resize' };
-    canvas.style.cursor = cursors[direction] || (textToolActive ? 'text' : canMove ? (dragState ? 'grabbing' : 'grab') : 'default');
+    canvas.style.cursor = cursors[direction] || (canMove ? (dragState ? 'grabbing' : 'grab') : activeTab === 'text' ? 'text' : 'default');
   }
 
   function resizeTextBox(text, direction, bounds, point) {
@@ -1185,8 +1191,8 @@
   }
 
   function beginCanvasDrag(event) {
+    if (editingTextId) $('#canvasTextEditor').blur();
     const point = pointerPosition(event);
-    if (textToolActive) { createTextAt(point); return; }
     const beforeMove = snapshot();
     const textResizeHandle = hitTestTextResizeHandle(point);
     const imageResizeHandle = hitTestImageResizeHandle(point);
@@ -1228,6 +1234,7 @@
       } else {
         const imageHit = topHit?.type === 'image' ? topHit.layer : null;
         if (!imageHit) {
+          if (activeTab === 'text') { createTextAt(point); return; }
           selectedElement = null; renderLayers(); renderCanvas(); setResizeCursor(); return;
         }
         selectLayer(imageHit.id);
@@ -1358,45 +1365,175 @@
       if (option) selectBackground(option.dataset.backgroundId);
     });
     let draggedKey = null;
-    const layerList = $('#layerList');
+    let draggedElement = null;
+    const layerList = $('#workspaceLayerList');
+    const workspaceLayersPanel = $('.workspace-layers');
     const clearDrop = () => layerList.querySelectorAll('.drop-before, .drop-after').forEach(el => el.classList.remove('drop-before', 'drop-after'));
+    let scrollFrame = null;
+    let dragPoint = null;
+
+    function getDropTarget(cursorY) {
+      if (!draggedKey) return null;
+      const otherRows = Array.from(layerList.querySelectorAll('.layer-item:not(.sorting)'));
+      if (!otherRows.length) return null;
+
+      const origDisplay = [...state.layerOrder].reverse();
+      const origIndex = origDisplay.indexOf(draggedKey);
+      const rects = otherRows.map(row => row.getBoundingClientRect());
+
+      let targetIndex = otherRows.length;
+
+      if (cursorY < rects[0].top) {
+        targetIndex = 0;
+      } else if (cursorY > rects[rects.length - 1].bottom) {
+        targetIndex = otherRows.length;
+      } else {
+        for (let i = 0; i < otherRows.length; i++) {
+          if (i < origIndex) {
+            if (cursorY < rects[i].bottom) {
+              targetIndex = i;
+              break;
+            }
+          } else {
+            if (i === otherRows.length - 1 || cursorY < rects[i + 1].top) {
+              targetIndex = cursorY > rects[i].top ? i + 1 : i;
+              break;
+            }
+          }
+        }
+      }
+
+      return {
+        targetIndex,
+        origIndex,
+        isSameAsOrig: targetIndex === origIndex,
+        otherRows
+      };
+    }
+
+    const markDrop = () => {
+      clearDrop();
+      if (!dragPoint || !draggedKey) return;
+      const info = getDropTarget(dragPoint.y);
+      if (!info || info.isSameAsOrig) return;
+
+      const { targetIndex, otherRows } = info;
+      if (targetIndex < otherRows.length) {
+        otherRows[targetIndex].classList.add('drop-before');
+      } else if (otherRows.length > 0) {
+        otherRows[otherRows.length - 1].classList.add('drop-after');
+      }
+    };
+
+    const stopAutoScroll = () => {
+      cancelAnimationFrame(scrollFrame);
+      scrollFrame = null;
+      dragPoint = null;
+    };
+
+    const autoScroll = () => {
+      if (!draggedKey || !dragPoint) { stopAutoScroll(); return; }
+      const rect = layerList.getBoundingClientRect();
+      const edge = Math.min(48, rect.height / 3);
+      const speed = dragPoint.y < rect.top + edge
+        ? -12 * Math.max(0, 1 - (dragPoint.y - rect.top) / edge)
+        : dragPoint.y > rect.bottom - edge ? 12 * Math.max(0, 1 - (rect.bottom - dragPoint.y) / edge) : 0;
+      if (speed !== 0) {
+        layerList.scrollTop += speed;
+        markDrop();
+      }
+      scrollFrame = requestAnimationFrame(autoScroll);
+    };
+
     layerList.addEventListener('dragstart', event => {
       const row = event.target.closest('.layer-item');
       if (!row) return;
       draggedKey = row.dataset.elementType + ':' + row.dataset.layerId;
+      draggedElement = row;
       event.dataTransfer.effectAllowed = 'move';
       event.dataTransfer.setData('text/plain', draggedKey);
       row.classList.add('sorting');
+      setTimeout(() => {
+        if (draggedElement) draggedElement.style.pointerEvents = 'none';
+      }, 0);
     });
-    layerList.addEventListener('dragover', event => {
+
+    const handleDragOver = event => {
       if (!draggedKey) return;
       event.preventDefault();
       event.dataTransfer.dropEffect = 'move';
-      clearDrop();
-      const row = event.target.closest('.layer-item');
-      if (row) row.classList.add(event.clientY < row.getBoundingClientRect().top + row.offsetHeight / 2 ? 'drop-before' : 'drop-after');
-    });
-    layerList.addEventListener('drop', event => {
+      dragPoint = { x: event.clientX, y: event.clientY };
+      markDrop();
+      if (scrollFrame === null) scrollFrame = requestAnimationFrame(autoScroll);
+    };
+
+    const handleDrop = event => {
       if (!draggedKey) return;
       event.preventDefault();
-      const row = event.target.closest('.layer-item');
-      if (row) {
+      stopAutoScroll();
+
+      const info = getDropTarget(event.clientY);
+      if (info && !info.isSameAsOrig) {
         orderedElements();
         const display = [...state.layerOrder].reverse().filter(key => key !== draggedKey);
-        const target = row.dataset.elementType + ':' + row.dataset.layerId;
-        if (target !== draggedKey) {
-          const index = display.indexOf(target) + (row.classList.contains('drop-after') ? 1 : 0);
-          recordHistory();
-          display.splice(index, 0, draggedKey);
-          state.layerOrder = display.reverse();
-          if (draggedKey.startsWith('text:')) selectText(draggedKey.slice(5));
-          else selectLayer(draggedKey.slice(6));
-        }
+        const insertIndex = Math.max(0, Math.min(info.targetIndex, display.length));
+        recordHistory();
+        display.splice(insertIndex, 0, draggedKey);
+        state.layerOrder = display.reverse();
+        if (draggedKey.startsWith('text:')) selectText(draggedKey.slice(5));
+        else selectLayer(draggedKey.slice(6));
       }
-      draggedKey = null; clearDrop(); renderLayers(); renderCanvas();
+
+      if (draggedElement) {
+        draggedElement.style.pointerEvents = '';
+        draggedElement = null;
+      }
+      draggedKey = null;
+      clearDrop();
+      renderLayers();
+      renderCanvas();
+    };
+
+    layerList.addEventListener('dragover', handleDragOver);
+    layerList.addEventListener('dragleave', event => {
+      if (!layerList.contains(event.relatedTarget) && !workspaceLayersPanel?.contains(event.relatedTarget)) {
+        stopAutoScroll();
+        clearDrop();
+      }
     });
-    layerList.addEventListener('dragend', () => { draggedKey = null; clearDrop(); renderLayers(); });
-    $('#layerList').addEventListener('click', event => {
+    layerList.addEventListener('drop', handleDrop);
+
+    if (workspaceLayersPanel) {
+      workspaceLayersPanel.addEventListener('dragover', handleDragOver);
+      workspaceLayersPanel.addEventListener('drop', handleDrop);
+    }
+
+    layerList.addEventListener('dragend', () => {
+      stopAutoScroll();
+      if (draggedElement) {
+        draggedElement.style.pointerEvents = '';
+        draggedElement = null;
+      }
+      draggedKey = null;
+      clearDrop();
+      renderLayers();
+    });
+
+    const toggleLayerPanelBtn = $('#toggleLayerPanel');
+    if (toggleLayerPanelBtn && workspaceLayersPanel) {
+      toggleLayerPanelBtn.addEventListener('click', event => {
+        event.stopPropagation();
+        const isCollapsed = workspaceLayersPanel.classList.toggle('collapsed');
+        toggleLayerPanelBtn.setAttribute('aria-expanded', String(!isCollapsed));
+      });
+      workspaceLayersPanel.querySelector('.workspace-layers-head')?.addEventListener('click', event => {
+        if (workspaceLayersPanel.classList.contains('collapsed') && !event.target.closest('#toggleLayerPanel')) {
+          workspaceLayersPanel.classList.remove('collapsed');
+          toggleLayerPanelBtn.setAttribute('aria-expanded', 'true');
+        }
+      });
+    }
+    [$('#layerList'), layerList].forEach(list => list.addEventListener('click', event => {
       const button = event.target.closest('[data-layer-action]'); if (!button) return;
       const item = button.closest('.layer-item');
       const id = item.dataset.layerId;
@@ -1404,7 +1541,7 @@
       if (button.dataset.layerAction === 'select') isText ? selectText(id) : selectLayer(id);
       if (button.dataset.layerAction === 'up') isText ? moveText(id, 'up') : moveLayer(id, 'up');
       if (button.dataset.layerAction === 'down') isText ? moveText(id, 'down') : moveLayer(id, 'down');
-    });
+    }));
     $('#layerScale').addEventListener('input', event => updateSelectedLayer('scale', Number(event.target.value)));
     $('#layerRotation').addEventListener('input', event => updateSelectedLayer('rotation', Number(event.target.value)));
     $('#layerX').addEventListener('input', event => updateSelectedLayer('x', Number(event.target.value)));
@@ -1433,7 +1570,7 @@
     canvas.addEventListener('pointercancel', endCanvasDrag);
     document.addEventListener('keydown', handleEditorShortcut);
     document.addEventListener('pointerdown', event => {
-      if (event.target === canvas || event.target.closest?.('#canvasTextEditorBox, .controls-panel') || !selectedElement) return;
+      if (event.target === canvas || event.target.closest?.('#canvasTextEditorBox, .controls-panel, .workspace-layers') || !selectedElement) return;
       selectedElement = null; setResizeCursor(); renderCanvas();
     });
     window.addEventListener('resize', syncCanvasTextEditor);
