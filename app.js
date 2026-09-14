@@ -1537,20 +1537,6 @@
       renderLayers();
     });
 
-    const toggleLayerPanelBtn = $('#toggleLayerPanel');
-    if (toggleLayerPanelBtn && workspaceLayersPanel) {
-      toggleLayerPanelBtn.addEventListener('click', event => {
-        event.stopPropagation();
-        const isCollapsed = workspaceLayersPanel.classList.toggle('collapsed');
-        toggleLayerPanelBtn.setAttribute('aria-expanded', String(!isCollapsed));
-      });
-      workspaceLayersPanel.querySelector('.workspace-layers-head')?.addEventListener('click', event => {
-        if (workspaceLayersPanel.classList.contains('collapsed') && !event.target.closest('#toggleLayerPanel')) {
-          workspaceLayersPanel.classList.remove('collapsed');
-          toggleLayerPanelBtn.setAttribute('aria-expanded', 'true');
-        }
-      });
-    }
     [$('#layerList'), layerList].forEach(list => list.addEventListener('click', event => {
       const button = event.target.closest('[data-layer-action]'); if (!button) return;
       const item = button.closest('.layer-item');
@@ -1592,6 +1578,10 @@
       selectedElement = null; setResizeCursor(); renderCanvas();
     });
     window.addEventListener('resize', syncCanvasTextEditor);
+    if ('ResizeObserver' in window) {
+      const canvasResizeObserver = new ResizeObserver(syncCanvasTextEditor);
+      canvasResizeObserver.observe($('#canvasWrap'));
+    }
   }
 
   function registerWebMcp() {
