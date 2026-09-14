@@ -185,7 +185,7 @@
   function isValidTextLayer(layer) {
     return Boolean(layer && typeof layer === 'object' && !Array.isArray(layer)
       && typeof layer.id === 'string' && typeof layer.name === 'string' && typeof layer.text === 'string'
-      && layer.name.trim() && layer.name.length <= 30 && layer.text.length <= 120
+      && layer.name.trim() && layer.name.length <= 30
       && (layer.fontFamily === undefined || TEXT_FONTS.includes(layer.fontFamily))
       && /^#[0-9a-f]{6}$/i.test(layer.textColor) && ['left', 'center', 'right'].includes(layer.textAlign)
       && isFiniteRange(layer.fontSize, 16, 200) && Number.isFinite(layer.x) && Number.isFinite(layer.y)
@@ -491,6 +491,26 @@
     ctx.restore();
   }
 
+  function normalizeTextLineBreaks(value) {
+    return value.replace(/\r\n?|\u2028|\u2029/g, '\n');
+  }
+
+  function pasteCanvasText(event) {
+    const original = event.clipboardData?.getData('text/plain');
+    if (original === undefined) return;
+    const normalized = normalizeTextLineBreaks(original);
+    if (normalized === original) return; // Keep ordinary paste and native undo unchanged.
+    event.preventDefault();
+    const editor = event.currentTarget;
+    // Native insertion preserves selection replacement, caret movement and undo.
+    if (!document.execCommand('insertText', false, normalized)) {
+      const available = editor.maxLength < 0 ? normalized.length
+        : Math.max(0, editor.maxLength - editor.value.length + editor.selectionEnd - editor.selectionStart);
+      editor.setRangeText(normalized.slice(0, available), editor.selectionStart, editor.selectionEnd, 'end');
+      editor.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+  }
+
   let textWrapProbe;
   function wrapTextParagraph(paragraph, maxWidth) {
     if (!paragraph) return [''];
@@ -505,7 +525,7 @@
     const scale = canvas.getBoundingClientRect().width / canvas.width || 1;
     textWrapProbe.style.font = ctx.font;
     textWrapProbe.style.fontSize = `${parseFloat(textWrapProbe.style.fontSize) * scale}px`;
-    textWrapProbe.style.width = `${maxWidth * scale}px`;
+    textWrapProbe.style.width = Number.isFinite(maxWidth) ? `${maxWidth * scale}px` : 'max-content';
     textWrapProbe.textContent = paragraph;
     const node = textWrapProbe.firstChild;
     const range = document.createRange();
@@ -541,10 +561,17 @@
       sin > .001 ? (availableHeight - minimumHeight * cos) / sin : Infinity));
     ctx.save();
     ctx.font = `800 ${responsiveSize}px ${textFontFamily(textLayer)}`;
-    const paragraphs = textLayer.text.split('\n');
+    const paragraphs = normalizeTextLineBreaks(textLayer.text).split('\n');
     if (textLayer.autoSize) {
-      const measuredWidth = Math.max(responsiveSize * .6, ...paragraphs.map(line => ctx.measureText(line).width));
-      boxWidth = Math.min(boxWidth, measuredWidth + padding * 2);
+      const displayScale = canvas.getBoundingClientRect().width / canvas.width || 1;
+      const measuredWidth = Math.max(responsiveSize * .6, ...paragraphs.map(line => {
+        if (!line) return 0;
+        wrapTextParagraph(line, Infinity);
+        return textWrapProbe.getBoundingClientRect().width / displayScale;
+      }));
+      // Leave one display pixel for textarea subpixel rounding at exact-fit widths.
+      const fittedWidth = (Math.ceil(measuredWidth * displayScale) + 1) / displayScale;
+      boxWidth = Math.min(boxWidth, fittedWidth + padding * 2);
     }
     const lines = paragraphs.flatMap(line => wrapTextParagraph(line, Math.max(1, boxWidth - padding * 2)));
     ctx.restore();
@@ -764,7 +791,7 @@
     editingTextId = id; selectedTextId = id; selectedElement = 'text'; textToolActive = false;
     inlineEditHistorySaved = historyAlreadySaved;
     const editor = $('#canvasTextEditor');
-    editor.value = text.text;
+    editor.value = normalizeTextLineBreaks(text.text);
     syncControls(); renderLayers(); renderCanvas();
     requestAnimationFrame(() => {
       if (editingTextId !== id) return;
@@ -1536,6 +1563,7 @@
     upload.addEventListener('drop', event => handleImageFiles(event.dataTransfer.files));
     $('#imageTabButton').addEventListener('click', () => switchTab('image'));
     $('#textTabButton').addEventListener('click', () => { switchTab('text'); activateTextTool(); });
+    $('#canvasTextEditor').addEventListener('paste', pasteCanvasText);
     $('#canvasTextEditor').addEventListener('input', event => {
       const text = state.texts.find(layer => layer.id === editingTextId); if (!text) return;
       if (!inlineEditHistorySaved) { recordHistory(); inlineEditHistorySaved = true; }
