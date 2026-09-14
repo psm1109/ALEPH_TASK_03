@@ -1211,6 +1211,7 @@
       const { width, height } = layerDimensions(layer, image);
       dragState = {
         type: 'image-resize', direction: imageResizeHandle.direction, beforeMove, historySaved: false,
+        initialScale: layer.scale,
         centerX: canvas.width * layer.x / 100, centerY: canvas.height * layer.y / 100,
         rotation: layer.rotation * Math.PI / 180, left: -width / 2, right: width / 2, top: -height / 2, bottom: height / 2
       };
@@ -1283,7 +1284,10 @@
       layer.y = clamp((dragState.centerY + worldOffsetY) / canvas.height * 100, -20, 120);
       layer.width = (right - left) / canvas.width * 100;
       layer.height = (bottom - top) / canvas.width * 100;
-      layer.scale = layer.width;
+      // Combine both axis ratios; uniform resizing still changes scale linearly.
+      const widthRatio = (right - left) / (dragState.right - dragState.left);
+      const heightRatio = (bottom - top) / (dragState.bottom - dragState.top);
+      layer.scale = clamp(dragState.initialScale * Math.sqrt(widthRatio * heightRatio), 10, 240);
     } else if (dragState.type === 'text') {
       const text = selectedText(); if (!text) return;
       text.x = Math.max(5, Math.min(95, dragState.textX + (point.x - dragState.startX) / canvas.width * 100));
