@@ -198,7 +198,12 @@
     if (!item || typeof item !== 'object' || Array.isArray(item)) return null;
     const requiredStrings = ['id', 'name', 'ratio', 'createdAt'];
     if (!requiredStrings.every(key => typeof item[key] === 'string')) return null;
+    if (!item.id.trim() || !Number.isFinite(Date.parse(item.createdAt))) return null;
     if (!RATIOS[item.ratio] || !item.name.trim() || item.name.length > 30) return null;
+    // Explicitly malformed modern fields must not fall through to legacy defaults.
+    if (Object.hasOwn(item, 'images') && !Array.isArray(item.images)) return null;
+    if (Object.hasOwn(item, 'texts') && !Array.isArray(item.texts)) return null;
+    if (Array.isArray(item.texts) && !Array.isArray(item.images)) return null;
 
     let images;
     if (Array.isArray(item.images)) {
@@ -231,14 +236,18 @@
     }
 
     const keys = [...images.map(layer => 'image:' + layer.id), ...texts.map(layer => 'text:' + layer.id)];
+    if (new Set(keys).size !== keys.length) return null;
     if (item.layerOrder !== undefined && (!Array.isArray(item.layerOrder)
       || item.layerOrder.length !== keys.length || new Set(item.layerOrder).size !== keys.length
       || item.layerOrder.some(key => !keys.includes(key)))) return null;
     const layerOrder = item.layerOrder ? [...item.layerOrder] : keys;
     const thumbnail = typeof item.thumbnail === 'string' && /^data:image\/png;base64,/.test(item.thumbnail) ? item.thumbnail : null;
+    if (item.thumbnail != null && !thumbnail) return null;
     const backgroundImage = item.backgroundImage ?? null;
     if (backgroundImage !== null && (typeof backgroundImage !== 'string' || !/^data:image\/(png|jpeg);base64,/i.test(backgroundImage))) return null;
     if (item.backgroundId === 'custom' && !backgroundImage) return null;
+    if (item.backgroundId !== undefined && item.backgroundId !== 'custom'
+      && !BACKGROUNDS.some(background => background.id === item.backgroundId)) return null;
     const backgroundId = item.backgroundId === 'custom' ? 'custom' : BACKGROUNDS.some(background => background.id === item.backgroundId) ? item.backgroundId : DEFAULT_STATE.backgroundId;
     return {
       id: item.id, name: item.name, ratio: item.ratio, backgroundId, backgroundImage,
@@ -880,12 +889,18 @@
     return { dataUrl, image };
   }
 
-  async function hydrateImages(layers, backgroundImage = null) {
+  // Decode into temporary caches; validation must never mutate the live editor.
+  async function prepareImages(layers, backgroundImage = null) {
     const nextCache = new Map();
     await Promise.all(layers.map(async layer => nextCache.set(layer.id, await loadImageElement(layer.dataUrl))));
     const nextBackground = backgroundImage ? await loadImageElement(backgroundImage) : null;
-    imageCache = nextCache;
-    backgroundImageCache = nextBackground;
+    return { images: nextCache, background: nextBackground };
+  }
+
+  async function hydrateImages(layers, backgroundImage = null) {
+    const prepared = await prepareImages(layers, backgroundImage);
+    imageCache = prepared.images;
+    backgroundImageCache = prepared.background;
   }
 
   async function handleImageFiles(fileList) {
@@ -1198,17 +1213,31 @@
     if (!(file.type === 'application/json' || file.name.toLowerCase().endsWith('.json'))) {
       setMessage(message, 'JSON 파일만 가져올 수 있어요. 기존 템플릿은 유지됩니다.', 'error'); return;
     }
-    let parsed;
-    try { parsed = JSON.parse(await file.text()); }
+    $('#jsonInput').value = '';
+    let contents;
+    try { contents = await file.text(); }
     catch (_) {
-      setMessage(message, 'JSON 문법이 손상되어 복원하지 않았습니다. 기존 템플릿은 유지됩니다.', 'error');
-      $('#jsonInput').value = ''; return;
+      setMessage(message, 'JSON 파일을 읽을 수 없습니다. 기존 작업과 템플릿은 유지됩니다.', 'error'); return;
+    }
+    let parsed;
+    try { parsed = JSON.parse(contents); }
+    catch (_) {
+      setMessage(message, 'JSON 구문 오류가 있습니다. 괄호·따옴표·쉼표를 확인해주세요. 기존 작업과 템플릿은 유지됩니다.', 'error'); return;
     }
     const validEnvelope = parsed && parsed.format === 'mixit-templates' && [1, 2].includes(parsed.version) && Array.isArray(parsed.templates);
     const normalized = validEnvelope ? parsed.templates.map(normalizeTemplate) : [];
-    if (!validEnvelope || normalized.some(item => !item)) {
-      setMessage(message, '필수 항목이 없거나 형식이 올바르지 않아 복원하지 않았습니다. 기존 템플릿은 유지됩니다.', 'error');
-      $('#jsonInput').value = ''; return;
+    if (!validEnvelope || normalized.some(item => !item)
+      || new Set(normalized.map(item => item.id)).size !== normalized.length) {
+      setMessage(message, '유효하지 않은 템플릿 데이터 형식입니다. 필수 필드·자료형·중복 ID를 확인해주세요. 기존 작업과 템플릿은 유지됩니다.', 'error'); return;
+    }
+    // Validate every embedded image before committing any imported template.
+    for (const item of normalized) {
+      try {
+        await prepareImages(item.images, item.backgroundImage);
+        if (item.thumbnail) await loadImageElement(item.thumbnail);
+      } catch (_) {
+        setMessage(message, `“${item.name}”에 손상되거나 읽을 수 없는 이미지가 있습니다. 가져오기를 중단했습니다. 기존 작업과 템플릿은 유지됩니다.`, 'error'); return;
+      }
     }
     try {
       await persistTemplates(normalized); renderTemplates();
