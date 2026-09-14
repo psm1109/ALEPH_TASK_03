@@ -172,7 +172,7 @@
     return Boolean(layer && typeof layer === 'object' && !Array.isArray(layer)
       && typeof layer.id === 'string' && typeof layer.name === 'string'
       && typeof layer.dataUrl === 'string' && /^data:image\/(png|jpeg);base64,/i.test(layer.dataUrl)
-      && isFiniteRange(layer.x, -20, 120) && isFiniteRange(layer.y, -20, 120)
+      && Number.isFinite(layer.x) && Number.isFinite(layer.y)
       && isFiniteRange(layer.scale, 10, 240) && isFiniteRange(layer.rotation, -180, 180)
       && ((layer.width === undefined && layer.height === undefined)
         // Stored dimensions may exceed drag-handle limits for extreme aspect ratios.
@@ -187,8 +187,9 @@
       && layer.name.trim() && layer.name.length <= 30 && layer.text.length <= 120
       && (layer.fontFamily === undefined || TEXT_FONTS.includes(layer.fontFamily))
       && /^#[0-9a-f]{6}$/i.test(layer.textColor) && ['left', 'center', 'right'].includes(layer.textAlign)
-      && isFiniteRange(layer.fontSize, 16, 200) && isFiniteRange(layer.x, -50, 150) && isFiniteRange(layer.y, -50, 150)
+      && isFiniteRange(layer.fontSize, 16, 200) && Number.isFinite(layer.x) && Number.isFinite(layer.y)
       && (layer.autoSize === undefined || typeof layer.autoSize === 'boolean')
+      && (layer.rotation === undefined || isFiniteRange(layer.rotation, -180, 180))
       && isFiniteRange(layer.boxWidth, 15, 90) && isFiniteRange(layer.boxHeight, 8, 95));
   }
 
@@ -470,26 +471,22 @@
     ctx.restore();
   }
 
-  function graphemes(value) {
-    if ('Segmenter' in Intl) return [...new Intl.Segmenter('ko', { granularity: 'grapheme' }).segment(value)].map(part => part.segment);
-    return Array.from(value);
-  }
-
   function wrapTextParagraph(paragraph, maxWidth) {
-    if (!paragraph) return [''];
-    const lines = [];
-    let line = '';
-    graphemes(paragraph).forEach(character => {
-      const candidate = line + character;
-      if (line && ctx.measureText(candidate).width > maxWidth) {
-        lines.push(line);
-        line = character;
-      } else {
-        line = candidate;
+    const parts = 'Segmenter' in Intl
+      ? [...new Intl.Segmenter('ko', { granularity: 'grapheme' }).segment(paragraph)].map(s => s.segment)
+      : Array.from(paragraph);
+    const lines = []; let line = '';
+    for (const part of parts) {
+      if (line && ctx.measureText(line + part).width > maxWidth) {
+        const breakAt = line.lastIndexOf(' ');
+        if (breakAt > 0 && !/\s/u.test(part)) {
+          lines.push(line.slice(0, breakAt + 1)); line = line.slice(breakAt + 1);
+        } else { lines.push(line); line = ''; }
+        if (line && ctx.measureText(line + part).width > maxWidth) { lines.push(line); line = ''; }
       }
-    });
-    lines.push(line);
-    return lines;
+      line += part;
+    }
+    lines.push(line); return lines;
   }
 
   function textLayout(textLayer) {
@@ -497,22 +494,43 @@
     const lineHeight = responsiveSize * 1.22;
     const padding = canvas.width / 90;
     let boxWidth = canvas.width * textLayer.boxWidth / 100;
-    const contentWidth = Math.max(responsiveSize * .6, boxWidth - padding * 2);
+    const angle = (textLayer.rotation || 0) * Math.PI / 180;
+    const cos = Math.abs(Math.cos(angle)), sin = Math.abs(Math.sin(angle));
+    const availableWidth = canvas.width - padding * 2, availableHeight = canvas.height - padding * 2;
+    const minimumHeight = lineHeight + padding * 2;
+    boxWidth = Math.max(padding * 2 + 1, Math.min(boxWidth,
+      cos > .001 ? (availableWidth - minimumHeight * sin) / cos : Infinity,
+      sin > .001 ? (availableHeight - minimumHeight * cos) / sin : Infinity));
     ctx.save();
     ctx.font = `800 ${responsiveSize}px ${textFontFamily(textLayer)}`;
-    const lines = textLayer.text.split('\n').flatMap(paragraph => wrapTextParagraph(paragraph, contentWidth));
+    const paragraphs = textLayer.text.split('\n');
     if (textLayer.autoSize) {
-      const measuredWidth = Math.max(responsiveSize * .6, ...lines.map(line => ctx.measureText(line).width));
+      const measuredWidth = Math.max(responsiveSize * .6, ...paragraphs.map(line => ctx.measureText(line).width));
       boxWidth = Math.min(boxWidth, measuredWidth + padding * 2);
     }
+    const lines = paragraphs.flatMap(line => wrapTextParagraph(line, Math.max(1, boxWidth - padding * 2)));
     ctx.restore();
+    const contentWidth = Math.max(responsiveSize * .6, boxWidth - padding * 2);
     const x = canvas.width * textLayer.x / 100;
     const centerY = canvas.height * textLayer.y / 100;
     const contentHeight = Math.max(lineHeight, lines.length * lineHeight) + padding * 2;
-    const height = textLayer.autoSize ? contentHeight : Math.max(contentHeight, canvas.height * textLayer.boxHeight / 100);
+    const height = Math.max(minimumHeight, Math.min(contentHeight,
+      sin > .001 ? (availableWidth - boxWidth * cos) / sin : Infinity,
+      cos > .001 ? (availableHeight - boxWidth * sin) / cos : Infinity));
     const left = textLayer.textAlign === 'left' ? x : textLayer.textAlign === 'right' ? x - boxWidth : x - boxWidth / 2;
     const drawX = textLayer.textAlign === 'left' ? left + padding : textLayer.textAlign === 'right' ? left + boxWidth - padding : left + boxWidth / 2;
-    return { responsiveSize, lineHeight, padding, boxWidth, contentWidth, contentHeight, lines, x, centerY, height, left, drawX, top: centerY - height / 2 };
+    return { responsiveSize, lineHeight, padding, boxWidth, contentWidth, contentHeight, lines, x, centerY, height, left, drawX, angle, top: centerY - height / 2 };
+  }
+
+  function textPoint(point, layout, inverse = false) {
+    const cx = layout.left + layout.boxWidth / 2, cy = layout.centerY;
+    const angle = layout.angle * (inverse ? -1 : 1), dx = point.x - cx, dy = point.y - cy;
+    return { x: cx + dx * Math.cos(angle) - dy * Math.sin(angle), y: cy + dx * Math.sin(angle) + dy * Math.cos(angle) };
+  }
+
+  function rotateTextContext(layout) {
+    const cx = layout.left + layout.boxWidth / 2;
+    ctx.translate(cx, layout.centerY); ctx.rotate(layout.angle); ctx.translate(-cx, -layout.centerY);
   }
 
   function resizeHandles(left, top, width, height, size = Math.max(10, canvas.width / 90)) {
@@ -532,20 +550,93 @@
   }
 
   function textResizeHandles(layout) {
-    return resizeHandles(layout.left, layout.top, layout.boxWidth, layout.height);
+    const bounds = textResizeBounds(layout);
+    const handles = resizeHandles(bounds.left, bounds.top, bounds.right - bounds.left, bounds.bottom - bounds.top).filter(h => h.direction !== 'n' && h.direction !== 's');
+    handles.push({ direction: 'rotate', x: layout.left + layout.boxWidth / 2, y: layout.top + layout.padding, size: Math.max(10, canvas.width / 90) });
+    return handles.map(h => ({ ...h, ...textPoint(h, layout) }));
+  }
+
+  function textResizeBounds(layout) {
+    return { left: layout.left, top: layout.top, right: layout.left + layout.boxWidth,
+      bottom: layout.top + layout.height, minHeight: canvas.height * .08, layout };
+  }
+
+  function constrainElementPosition(layer, type) {
+    const anchorX = canvas.width * layer.x / 100;
+    const anchorY = canvas.height * layer.y / 100;
+    let handles;
+    if (type === 'text') {
+      const layout = textLayout(layer), inset = layout.padding;
+      const offsetX = layout.left - anchorX;
+      const rotatedWidth = layout.boxWidth * Math.abs(Math.cos(layout.angle)) + layout.height * Math.abs(Math.sin(layout.angle));
+      const rotatedHeight = layout.boxWidth * Math.abs(Math.sin(layout.angle)) + layout.height * Math.abs(Math.cos(layout.angle));
+      const centerOffset = offsetX + layout.boxWidth / 2;
+      const bounds = {
+        minX: (inset + rotatedWidth / 2 - centerOffset) / canvas.width * 100,
+        maxX: (canvas.width - inset - rotatedWidth / 2 - centerOffset) / canvas.width * 100,
+        minY: (inset + rotatedHeight / 2) / canvas.height * 100,
+        maxY: (canvas.height - inset - rotatedHeight / 2) / canvas.height * 100
+      };
+      layer.x = Math.max(bounds.minX, Math.min(bounds.maxX, layer.x));
+      layer.y = Math.max(bounds.minY, Math.min(bounds.maxY, layer.y));
+      return { ...bounds, x: layer.x, y: layer.y };
+    } else {
+      const image = imageCache.get(layer.id);
+      if (!image) return null;
+      const { width, height } = layerDimensions(layer, image);
+      const angle = layer.rotation * Math.PI / 180;
+      handles = resizeHandles(-width / 2, -height / 2, width, height).map(h => ({ ...h,
+        x: anchorX + h.x * Math.cos(angle) - h.y * Math.sin(angle),
+        y: anchorY + h.x * Math.sin(angle) + h.y * Math.cos(angle) }));
+    }
+    let best;
+    for (const h of handles) {
+      const margin = h.size + 2;
+      const offsetX = h.x - anchorX, offsetY = h.y - anchorY;
+      const bounds = {
+        minX: Math.ceil((margin - offsetX) / canvas.width * 1000 - 1e-7) / 10,
+        maxX: Math.floor((canvas.width - margin - offsetX) / canvas.width * 1000 + 1e-7) / 10,
+        minY: Math.ceil((margin - offsetY) / canvas.height * 1000 - 1e-7) / 10,
+        maxY: Math.floor((canvas.height - margin - offsetY) / canvas.height * 1000 + 1e-7) / 10
+      };
+      const x = Math.max(bounds.minX, Math.min(bounds.maxX, layer.x));
+      const y = Math.max(bounds.minY, Math.min(bounds.maxY, layer.y));
+      const distance = Math.hypot((x-layer.x)*canvas.width, (y-layer.y)*canvas.height);
+      if (!best || distance < best.distance) best = { ...bounds, x, y, distance };
+    }
+    layer.x = best.x; layer.y = best.y;
+    return best;
+  }
+
+  function syncPositionBounds(layer, type) {
+    const bounds = constrainElementPosition(layer, type);
+    if (!bounds) return;
+    const prefix = type === 'text' ? 'text' : 'layer';
+    for (const axis of ['X', 'Y']) {
+      for (const suffix of ['', 'Number']) {
+        const input = $('#' + prefix + axis + suffix);
+        if (!input) continue;
+        input.min = bounds['min' + axis]; input.max = bounds['max' + axis];
+        if (document.activeElement !== input) input.value = layer[axis.toLowerCase()];
+      }
+    }
   }
 
   function drawTextLayer(textLayer) {
     if (!textLayer.text) return;
     const layout = textLayout(textLayer);
-    const { responsiveSize, lineHeight, lines, drawX, centerY } = layout;
+    const { responsiveSize, lineHeight, lines, drawX } = layout;
     ctx.save();
+    rotateTextContext(layout);
+    ctx.beginPath();
+    ctx.rect(layout.left, layout.top, layout.boxWidth, layout.height);
+    ctx.clip();
     ctx.font = `800 ${responsiveSize}px ${textFontFamily(textLayer)}`;
     ctx.textAlign = textLayer.textAlign; ctx.textBaseline = 'middle';
     ctx.fillStyle = textLayer.textColor; ctx.strokeStyle = 'rgba(0,0,0,.42)';
     ctx.lineWidth = Math.max(3, responsiveSize * .075); ctx.lineJoin = 'round';
     lines.forEach((line, index) => {
-      const y = centerY + (index - (lines.length - 1) / 2) * lineHeight;
+      const y = layout.top + Math.max(layout.padding, (layout.height - lines.length * lineHeight) / 2) + (index + .5) * lineHeight;
       ctx.strokeText(line, drawX, y); ctx.fillText(line, drawX, y);
     });
     ctx.restore();
@@ -555,7 +646,9 @@
     if (!textLayer) return;
     const layout = textLayout(textLayer);
     ctx.save();
-    drawSelectionBox(layout.left, layout.top, layout.boxWidth, layout.height, textResizeHandles(layout));
+    rotateTextContext(layout);
+    drawSelectionBox(layout.left, layout.top, layout.boxWidth, layout.height,
+      textResizeHandles(layout).map(h => ({ ...h, ...textPoint(h, layout, true) })));
     ctx.restore();
   }
 
@@ -566,6 +659,11 @@
     ctx.strokeRect(left, top, width, height);
     ctx.setLineDash([]);
     handles.forEach(handle => {
+      if (handle.direction === 'rotate') {
+        ctx.beginPath(); ctx.arc(handle.x, handle.y, handle.size * .65, 0, Math.PI * 2);
+        ctx.fillStyle = '#ffffff'; ctx.fill(); ctx.strokeStyle = '#6950b9'; ctx.stroke();
+        return;
+      }
       ctx.fillStyle = '#c8f135';
       ctx.fillRect(handle.x - handle.size / 2, handle.y - handle.size / 2, handle.size, handle.size);
       ctx.strokeStyle = '#171815';
@@ -596,13 +694,27 @@
       width: `${layout.boxWidth * scaleX}px`,
       height: `${editorHeight}px`
     });
+    editorBox.style.transformOrigin = 'center center';
+    editorBox.style.transform = `rotate(${text.rotation || 0}deg)`;
+    textResizeHandles(layout).forEach(handle => {
+      const element = editorBox.querySelector(`[data-editor-resize="${handle.direction}"]`);
+      if (!element) return;
+      const local = textPoint(handle, layout, true);
+      Object.assign(element.style, {
+        left: `${(local.x - layout.left) * scaleX}px`,
+        top: `${(local.y - layout.top) * scaleY}px`,
+        right: 'auto', bottom: 'auto', transform: 'translate(-50%, -50%)'
+      });
+    });
     Object.assign(editor.style, {
       padding: `${verticalPadding}px ${horizontalPadding}px`,
       fontSize: `${layout.responsiveSize * scaleX}px`,
       fontFamily: textFontFamily(text),
       lineHeight: `${lineHeight}px`,
       textAlign: text.textAlign,
-      color: 'transparent',
+      color: text.textColor,
+      webkitTextStroke: `${Math.max(3, layout.responsiveSize * .075) * scaleX}px rgba(0,0,0,.42)`,
+      paintOrder: 'stroke fill',
       caretColor: text.textColor
     });
     editorBox.hidden = false;
@@ -617,6 +729,7 @@
     editor.value = text.text;
     syncControls(); renderLayers(); renderCanvas();
     requestAnimationFrame(() => {
+      if (editingTextId !== id) return;
       editor.focus({ preventScroll: true });
       editor.setSelectionRange(editor.value.length, editor.value.length);
     });
@@ -629,11 +742,11 @@
     inlineResizeState = null;
     $('#canvasTextEditorBox').hidden = true;
     const text = state.texts.find(layer => layer.id === id);
-    if (text && !text.text) {
+    if (text && !text.text.trim()) {
       selectedTextId = id;
       deleteSelectedText(false);
     }
-    selectedElement = text?.text && event?.relatedTarget?.closest('.controls-panel') ? 'text' : null;
+    selectedElement = text?.text.trim() ? 'text' : null;
     syncControls(); renderLayers(); renderCanvas();
   }
 
@@ -655,10 +768,15 @@
       boxWidth: Math.max(15, Math.min(40, 95 - x)), boxHeight, autoSize: true
     };
     state.texts.push(text);
+    text.y = (point.y + textLayout(text).height / 2) / canvas.height * 100;
     startInlineTextEditing(text.id, true);
   }
 
   function renderCanvas(showGuides = true) {
+    state.texts.forEach(layer => constrainElementPosition(layer, 'text'));
+    state.images.forEach(layer => constrainElementPosition(layer, 'image'));
+    if (selectedText()) syncPositionBounds(selectedText(), 'text');
+    if (selectedLayer()) syncPositionBounds(selectedLayer(), 'image');
     syncPreciseControls();
     const hasText = activeTab === 'text' && selectedElement === 'text' && Boolean(selectedText());
     const hasImage = activeTab === 'image' && selectedElement === 'image' && Boolean(selectedLayer());
@@ -667,7 +785,10 @@
     $('#inspectorEmpty').hidden = hasText || hasImage;
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     drawBackground();
-    orderedElements().forEach(({ type, layer }) => type === 'image' ? drawLayer(layer) : drawTextLayer(layer));
+    orderedElements().forEach(({ type, layer }) => {
+      if (type === 'image') drawLayer(layer);
+      else if (!showGuides || layer.id !== editingTextId) drawTextLayer(layer);
+    });
     if (showGuides && selectedElement === 'image') drawLayerSelection(selectedLayer());
     if (showGuides && selectedElement === 'text') drawTextSelection(selectedText());
     syncCanvasTextEditor();
@@ -878,7 +999,6 @@
     const text = selectedText();
     if (!text) return;
     if (saveHistory && text[key] !== value) recordHistory();
-    if (key === 'fontSize' || key === 'fontFamily') text.autoSize = true;
     text[key] = value; syncControls(); renderLayers(); renderCanvas();
   }
 
@@ -1129,8 +1249,9 @@
     return [...state.texts].reverse().find(text => {
       if (!text.text) return false;
       const layout = textLayout(text);
-      return point.x >= layout.left && point.x <= layout.left + layout.boxWidth
-        && point.y >= layout.top && point.y <= layout.top + layout.height;
+      const local = textPoint(point, layout, true);
+      return local.x >= layout.left && local.x <= layout.left + layout.boxWidth
+        && local.y >= layout.top && local.y <= layout.top + layout.height;
     }) || null;
   }
 
@@ -1145,25 +1266,20 @@
 
   function setResizeCursor(direction = '', canMove = false) {
     const cursors = { n: 'ns-resize', s: 'ns-resize', e: 'ew-resize', w: 'ew-resize', ne: 'nesw-resize', sw: 'nesw-resize', nw: 'nwse-resize', se: 'nwse-resize' };
-    canvas.style.cursor = cursors[direction] || (canMove ? (dragState ? 'grabbing' : 'grab') : activeTab === 'text' ? 'text' : 'default');
+    canvas.style.cursor = direction === 'rotate' ? 'crosshair' : cursors[direction] || (canMove ? (dragState ? 'grabbing' : 'grab') : activeTab === 'text' ? 'text' : 'default');
   }
 
   function resizeTextBox(text, direction, bounds, point) {
-    const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
-    const minWidth = canvas.width * .15;
-    const maxWidth = canvas.width * .9;
-    const maxHeight = canvas.height * .95;
-    let { left, right, top, bottom } = bounds;
-    if (direction.includes('w')) left = clamp(point.x, right - maxWidth, right - minWidth);
-    if (direction.includes('e')) right = clamp(point.x, left + minWidth, left + maxWidth);
-    if (direction.includes('n')) top = clamp(point.y, bottom - maxHeight, bottom - bounds.minHeight);
-    if (direction.includes('s')) bottom = clamp(point.y, top + bounds.minHeight, top + maxHeight);
-    text.boxWidth = clamp((right - left) / canvas.width * 100, 15, 90);
-    text.boxHeight = clamp((bottom - top) / canvas.height * 100, 8, 95);
+    if (bounds.layout) point = textPoint(point, bounds.layout, true);
+    const minWidth = canvas.width * .15, maxWidth = canvas.width * .9;
+    let { left, right, top } = bounds;
+    if (direction.includes('w')) left = Math.max(right - maxWidth, Math.min(right - minWidth, point.x));
+    if (direction.includes('e')) right = Math.max(left + minWidth, Math.min(left + maxWidth, point.x));
+    text.boxWidth = Math.max(15, Math.min(90, (right - left) / canvas.width * 100));
     text.autoSize = false;
-    text.y = clamp((top + bottom) / 2 / canvas.height * 100, -50, 150);
-    const anchorX = text.textAlign === 'left' ? left : text.textAlign === 'right' ? right : (left + right) / 2;
-    text.x = clamp(anchorX / canvas.width * 100, -50, 150);
+    text.x = (text.textAlign === 'left' ? left : text.textAlign === 'right' ? right : (left + right) / 2) / canvas.width * 100;
+    text.y = (top + textLayout(text).height / 2) / canvas.height * 100;
+    constrainElementPosition(text, 'text');
   }
 
   function beginInlineTextResize(event) {
@@ -1177,11 +1293,7 @@
     inlineResizeState = {
       pointerId: event.pointerId,
       direction: handle.dataset.editorResize,
-      left: layout.left,
-      right: layout.left + layout.boxWidth,
-      top: layout.top,
-      bottom: layout.top + layout.height,
-      minHeight: Math.min(canvas.height * .95, layout.contentHeight)
+      ...textResizeBounds(layout)
     };
     handle.setPointerCapture?.(event.pointerId);
   }
@@ -1203,6 +1315,7 @@
   }
 
   function beginCanvasDrag(event) {
+    const hadTextSelection = selectedElement === 'text' || Boolean(editingTextId);
     if (editingTextId) $('#canvasTextEditor').blur();
     const point = pointerPosition(event);
     const beforeMove = snapshot();
@@ -1212,9 +1325,10 @@
       const text = selectedText();
       const layout = textLayout(text);
       dragState = {
-        type: 'text-resize', direction: textResizeHandle.direction, beforeMove, historySaved: false,
-        left: layout.left, right: layout.left + layout.boxWidth, top: layout.top, bottom: layout.top + layout.height,
-        minHeight: Math.min(canvas.height * .95, layout.contentHeight)
+        type: textResizeHandle.direction === 'rotate' ? 'text-rotate' : 'text-resize', direction: textResizeHandle.direction, beforeMove, historySaved: false,
+        initialRotation: text.rotation || 0,
+        startAngle: Math.atan2(point.y - layout.centerY, point.x - layout.left - layout.boxWidth / 2),
+        ...textResizeBounds(layout)
       };
     } else if (imageResizeHandle) {
       const layer = selectedLayer();
@@ -1232,7 +1346,8 @@
         if (type === 'text') {
           if (!layer.text) return false;
           const box = textLayout(layer);
-          return point.x >= box.left && point.x <= box.left + box.boxWidth && point.y >= box.top && point.y <= box.top + box.height;
+          const local = textPoint(point, box, true);
+          return local.x >= box.left && local.x <= box.left + box.boxWidth && local.y >= box.top && local.y <= box.top + box.height;
         }
         const image = imageCache.get(layer.id);
         if (!image) return false;
@@ -1241,13 +1356,13 @@
       });
       const textHit = topHit?.type === 'text' ? topHit.layer : null;
       if (textHit) {
-        const editOnClick = selectedElement === 'text' && selectedTextId === textHit.id;
+        const editOnClick = true;
         selectText(textHit.id);
         dragState = { type: 'text', startX: point.x, startY: point.y, textX: textHit.x, textY: textHit.y, beforeMove, historySaved: false, editOnClick };
       } else {
         const imageHit = topHit?.type === 'image' ? topHit.layer : null;
         if (!imageHit) {
-          if (activeTab === 'text') { createTextAt(point); return; }
+          if (activeTab === 'text' && (!hadTextSelection || textToolActive)) { createTextAt(point); return; }
           selectedElement = null; renderLayers(); renderCanvas(); setResizeCursor(); return;
         }
         selectLayer(imageHit.id);
@@ -1273,7 +1388,12 @@
       recordHistory(dragState.beforeMove);
       dragState.historySaved = true;
     }
-    if (dragState.type === 'text-resize') {
+    if (dragState.type === 'text-rotate') {
+      const text = selectedText(); if (!text) return;
+      const layout = dragState.layout;
+      const angle = Math.atan2(point.y - layout.centerY, point.x - layout.left - layout.boxWidth / 2);
+      text.rotation = ((dragState.initialRotation + (angle - dragState.startAngle) * 180 / Math.PI + 540) % 360) - 180;
+    } else if (dragState.type === 'text-resize') {
       const text = selectedText(); if (!text) return;
       resizeTextBox(text, dragState.direction, dragState, point);
     } else if (dragState.type === 'image-resize') {
@@ -1292,8 +1412,8 @@
       const localCenterY = (top + bottom) / 2;
       const worldOffsetX = localCenterX * Math.cos(dragState.rotation) - localCenterY * Math.sin(dragState.rotation);
       const worldOffsetY = localCenterX * Math.sin(dragState.rotation) + localCenterY * Math.cos(dragState.rotation);
-      layer.x = clamp((dragState.centerX + worldOffsetX) / canvas.width * 100, -20, 120);
-      layer.y = clamp((dragState.centerY + worldOffsetY) / canvas.height * 100, -20, 120);
+      layer.x = (dragState.centerX + worldOffsetX) / canvas.width * 100;
+      layer.y = (dragState.centerY + worldOffsetY) / canvas.height * 100;
       layer.width = (right - left) / canvas.width * 100;
       layer.height = (bottom - top) / canvas.width * 100;
       // Combine both axis ratios; uniform resizing still changes scale linearly.
@@ -1302,14 +1422,23 @@
       layer.scale = clamp(dragState.initialScale * Math.sqrt(widthRatio * heightRatio), 10, 240);
     } else if (dragState.type === 'text') {
       const text = selectedText(); if (!text) return;
-      text.x = Math.max(-50, Math.min(150, dragState.textX + (point.x - dragState.startX) / canvas.width * 100));
-      text.y = Math.max(-50, Math.min(150, dragState.textY + (point.y - dragState.startY) / canvas.height * 100));
+      text.x = dragState.textX + (point.x - dragState.startX) / canvas.width * 100;
+      text.y = dragState.textY + (point.y - dragState.startY) / canvas.height * 100;
     } else {
       const layer = selectedLayer(); if (!layer) return;
-      layer.x = Math.max(-20, Math.min(120, dragState.layerX + (point.x - dragState.startX) / canvas.width * 100));
-      layer.y = Math.max(-20, Math.min(120, dragState.layerY + (point.y - dragState.startY) / canvas.height * 100));
+      layer.x = dragState.layerX + (point.x - dragState.startX) / canvas.width * 100;
+      layer.y = dragState.layerY + (point.y - dragState.startY) / canvas.height * 100;
     }
     syncControls(); renderCanvas();
+    // Discard motion blocked by the boundary so reversing the pointer responds immediately.
+    if (dragState.type === 'text' || dragState.type === 'layer') {
+      const element = dragState.type === 'text' ? selectedText() : selectedLayer();
+      const prefix = dragState.type === 'text' ? 'text' : 'layer';
+      dragState[`${prefix}X`] = element.x;
+      dragState[`${prefix}Y`] = element.y;
+      dragState.startX = point.x;
+      dragState.startY = point.y;
+    }
   }
 
   function endCanvasDrag() {
@@ -1350,7 +1479,10 @@
     $('#canvasTextEditor').addEventListener('input', event => {
       const text = state.texts.find(layer => layer.id === editingTextId); if (!text) return;
       if (!inlineEditHistorySaved) { recordHistory(); inlineEditHistorySaved = true; }
-      text.text = event.target.value; text.autoSize = true; renderLayers(); renderCanvas();
+      const top = textLayout(text).top;
+      text.text = event.target.value;
+      text.y = (top + textLayout(text).height / 2) / canvas.height * 100;
+      renderLayers(); renderCanvas();
     });
     $('#canvasTextEditor').addEventListener('blur', finishInlineTextEditing);
     $('#canvasTextEditor').addEventListener('keydown', event => { if (event.key === 'Escape') { event.preventDefault(); event.currentTarget.blur(); } });
@@ -1590,6 +1722,10 @@
     canvas.addEventListener('pointercancel', endCanvasDrag);
     document.addEventListener('keydown', handleEditorShortcut);
     document.addEventListener('pointerdown', event => {
+      if (editingTextId && event.target !== canvas && !event.target.closest?.('#canvasTextEditorBox, .controls-panel')) {
+        finishInlineTextEditing(event);
+        return;
+      }
       if (event.target === canvas || event.target.closest?.('#canvasTextEditorBox, .controls-panel, .workspace-layers') || !selectedElement) return;
       selectedElement = null; setResizeCursor(); renderCanvas();
     });
